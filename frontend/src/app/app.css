@@ -1,0 +1,22 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--brand);
+  color: #fff;
+}
+.brand {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  margin-right: auto;
+}
+.who {
+  opacity: 0.9;
+}
+.link {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  color: #fff;
+}

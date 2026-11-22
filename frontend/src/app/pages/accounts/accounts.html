@@ -1,0 +1,45 @@
+<main class="card">
+  <h1>Your accounts</h1>
+
+  @switch (state()) {
+    @case ('loading') {
+      <p data-testid="accounts-loading">Loading your accounts…</p>
+    }
+    @case ('error') {
+      <p class="error" role="alert" data-testid="accounts-error">We couldn't load your accounts.</p>
+      <button type="button" (click)="load()" data-testid="accounts-retry">Try again</button>
+    }
+    @case ('ready') {
+      @if (accounts().length === 0) {
+        <p data-testid="accounts-empty">You don't have any accounts yet.</p>
+      } @else {
+        <ul class="accounts" data-testid="accounts-list">
+          @for (account of accounts(); track account.id) {
+            <li
+              class="account"
+              [class.frozen]="account.status === 'FROZEN'"
+              [attr.data-testid]="'account-' + account.id"
+              data-test-role="account"
+            >
+              <div>
+                <strong data-testid="account-name">{{
+                  account.nickname || account.type_label
+                }}</strong>
+                <span class="muted" data-testid="account-type">{{ account.type_label }}</span>
+                <code data-testid="account-iban">{{ account.iban_display }}</code>
+              </div>
+              <div class="right">
+                <span class="balance" data-testid="account-balance">{{
+                  account.balance | money: account.currency
+                }}</span>
+                @if (account.status === 'FROZEN') {
+                  <span class="badge" data-testid="account-frozen">Frozen</span>
+                }
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    }
+  }
+</main>

@@ -1,0 +1,117 @@
+:root {
+  --brand: #0b4f6c;
+  --text: #1d2939;
+  --muted: #667085;
+  --border: #d0d5dd;
+  --error: #b42318;
+  --bg: #f5f7fa;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  color: var(--text);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+}
+.card {
+  max-width: 760px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.card.narrow {
+  max-width: 420px;
+}
+h1 {
+  font-size: 1.4rem;
+  margin-top: 0;
+}
+label {
+  display: block;
+  font-weight: 600;
+  margin: 1rem 0 0.25rem;
+}
+input {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+button {
+  margin-top: 1.25rem;
+  padding: 0.6rem 1.1rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.field-error,
+.error {
+  color: var(--error);
+  margin: 0.35rem 0 0;
+}
+.notice {
+  background: #fffaeb;
+  border: 1px solid #fedf89;
+  padding: 0.6rem;
+  border-radius: 8px;
+}
+.hint,
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.accounts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.account {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.account div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.account .right {
+  align-items: flex-end;
+}
+.account.frozen {
+  opacity: 0.65;
+}
+.balance {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.badge {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #fee4e2;
+  color: var(--error);
+}
+code {
+  font-size: 0.85rem;
+  color: var(--muted);
+}

@@ -1,0 +1,8 @@
+<header class="topbar">
+  <a routerLink="/" class="brand" data-testid="brand">Ledgerly Bank</a>
+  @if (auth.isLoggedIn()) {
+    <span class="who" data-testid="user-name">{{ auth.user()?.full_name }}</span>
+    <button type="button" class="link" (click)="logout()" data-testid="logout">Log out</button>
+  }
+</header>
+<router-outlet />
