@@ -17,7 +17,7 @@ Ledgerly Bank is fictional. All customers, accounts and money are invented test 
 | OpenAPI 3 spec (committed, checked in CI) + Swagger UI | ✅ |
 | Accounts and statements (filters, pagination), owner-only access, deterministic seed data | ✅ |
 | Beneficiaries (OTP by email) and transfers with the bank's real limit rules, idempotency and row locking | ✅ |
-| ISO 20022 `pacs.008` payment messages | 🔜 |
+| ISO 20022 `pacs.008` messages for transfers to other banks (schema-validated, golden-file tested) | ✅ |
 | Angular front end with `data-testid` everywhere | 🔜 |
 | Docker Compose (Postgres + API + UI) | 🔜 |
 
@@ -48,6 +48,7 @@ CI runs every test on **SQLite and Postgres 17**, fails on missing migrations, a
 - **Transfer rules come from the bank's published policy**, the same text the Ask Ledgerly chatbot answers from: AED 50,000 a day per customer across all accounts, AED 10,000 in the first 24 hours to a new beneficiary, up to 100 beneficiaries, OTP to add one. Each rule is tested at its exact boundary (AED 50,000.00 passes, 0.01 more is refused).
 - **Money moves inside one database transaction with row locks**: the customer first (so two accounts can't both slip under the daily limit), then the accounts in id order (no deadlocks). Concurrency tests fire 10 transfers at the same instant on Postgres.
 - **Idempotency keys**: a retried or double-clicked transfer replays the first response (`Idempotent-Replayed: true`) and never pays twice; reusing a key for a different transfer is a 409.
+- **ISO 20022 pacs.008 for every transfer to another bank** (`GET /api/transfers/{id}/pacs008/`): built with lxml, validated against a subset XSD written from the published pacs.008.001.08 definition (real element names, order and data rules; not the official file), settlement date from the bank's 2 PM cut-off and the UAE Saturday–Sunday weekend, names escaped, and any DOCTYPE refused (XXE).
 - **Money is `Decimal`, sent as a string** (`"1000.00"`), never a float.
 - **Deterministic demo data.** The same seed always gives the same customers, IBANs (valid mod-97 check digits) and statements, and a test proves every balance equals the sum of its transactions. The seed command refuses to run with DEBUG off, because its passwords are public.
 - **No user enumeration.** A wrong password and an unknown email get the same 401 response.

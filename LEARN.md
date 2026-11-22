@@ -442,3 +442,145 @@ In Swagger, as `sara@example.com` / `Ledgerly-Demo-2026`:
 13. `new_beneficiary_limit`: "New beneficiaries are limited to AED 10000.00 for 24 hours. You can send AED 4000.00 more until then." Two hours later the beneficiary is over 24 hours old, so only the daily limit applies and AED 5,000 goes through.
 
 </details>
+
+---
+
+# Part 4: ISO 20022 pacs.008 messages (Forge90 day 13)
+
+You've tested FedNow, Fedwire, SWIFT and ACH payments at work; this is the part of the portfolio that shows it. A transfer to another bank isn't a database update: it's a **message** sent through a payment network, and the message format is ISO 20022.
+
+Budget: one 2-hour session, plus the quiz (45 min).
+
+## 25. Key concepts
+
+**ISO 20022** is the global standard for financial messages: XML documents with strictly defined elements. SWIFT cross-border payments, FedNow, the European SEPA schemes and the UAE's instant payment platform all use it (or are moving to it). Message names read like `pacs.008.001.08`:
+- `pacs` = payments clearing and settlement (bank to bank);
+- `008` = FI to FI customer credit transfer ("move a customer's money to another bank");
+- `001.08` = variant 1, version 8.
+
+Others you've met: `pain.001` (customer → bank instruction), `pacs.002` (payment status report), `camt.053` (statement).
+
+**What Ledgerly puts in the message:**
+
+| Element | Meaning | Ledgerly value |
+|---|---|---|
+| `GrpHdr/MsgId` | This message's id | `MSG-<reference>` |
+| `GrpHdr/CreDtTm` | When it was created, with time zone | transfer time, Dubai +04:00 |
+| `GrpHdr/SttlmInf/SttlmMtd` | How banks settle | `CLRG` (through the local clearing system) |
+| `PmtId/EndToEndId` | Id that stays the same end to end | the transfer reference |
+| `PmtId/UETR` | Unique end-to-end transaction reference (a version-4 UUID), tracked across every bank (SWIFT gpi) | `transfer.uetr` |
+| `IntrBkSttlmAmt` + `Ccy` | Amount banks settle | `1250.75` `AED` |
+| `IntrBkSttlmDt` | Settlement date | from the 2 PM cut-off rule |
+| `ChrgBr` | Who pays charges | `SLEV` (per the clearing system's service level) |
+| `Dbtr` / `DbtrAcct` / `DbtrAgt` | Payer, their IBAN, their bank | the customer, their IBAN, Ledgerly's (fictional) BIC |
+| `Cdtr` / `CdtrAcct` / `CdtrAgt` | Payee, their IBAN, their bank | the beneficiary, their IBAN, the bank code from the IBAN |
+| `RmtInf/Ustrd` | Free-text remittance info | the transfer remarks, left out when empty |
+
+**The subset XSD.** An XSD (XML Schema) is a machine-checkable contract: element names, order, which elements are required, patterns (IBAN, BIC, UUID v4) and code lists (`CLRG`, `SLEV`...). `payments/schemas/pacs.008.001.08.subset.xsd` was written for this project from the published message definition: real namespace, names, order and rules, minus the optional elements Ledgerly never sends. It isn't the official file (that comes from iso20022.org), and the header comment says so. Say it the same way in interviews: "validated against a subset schema I wrote from the standard; before a real network I'd validate against the official XSD and the network's usage guidelines."
+
+**Settlement date** (policy: "before 2:00 PM on a business day ... credited the same day"):
+- before 14:00 Dubai time, Monday to Friday → same day;
+- 14:00 exactly, later, or on a weekend → next business day;
+- the UAE weekend has been **Saturday and Sunday since 2022** (before that, Friday and Saturday). A mutation test with the old weekend broke 4 tests;
+- public holidays aren't modelled (a real bank reads a holiday calendar).
+
+**Testing XML, four ways:**
+1. **Schema validation:** the message obeys the contract.
+2. **Content assertions with XPath:** the *right* amount, IBANs, UETR. A schema-valid message can still carry the wrong payment.
+3. **Golden file:** the exact bytes for a fixed transfer, reviewed once and committed (`tests/golden/pacs008_local.xml`). Any change to the output fails the test until someone reviews the diff and updates the file. Great for catching unintended changes; useless if people update the file without reading it.
+4. **Test the validator itself:** five deliberately broken messages (bad code, lower-case currency, bad IBAN, non-numeric count, wrong UUID version) must all be rejected. While writing this, one "broken" message turned out to still be valid: my replacement edited the wrong `-4` in the UUID. Without this test, that mistake would have gone unnoticed.
+
+**XML security:**
+- **Injection:** a customer could name a beneficiary `</Nm><Nm>Evil`. lxml escapes `&`, `<` and `>` when setting text, so the name round-trips intact and the message stays valid (`test_special_characters_in_names_are_escaped_not_injected`).
+- **XXE (XML external entities):** a document can declare `<!ENTITY x SYSTEM "file:///etc/passwd">` and make a careless parser read local files or call URLs. The parser here never resolves entities or touches the network, and any message with a DOCTYPE is rejected outright, since payment messages never need one. Found while building: with entities off, lxml's schema validator crashed with an "internal error" on the unresolved entity; the DOCTYPE rule and error handling turned that into a clean validation error.
+
+## 26. Run it
+
+```bash
+cd backend
+python manage.py runserver
+```
+
+As Sara in Swagger: add and confirm a beneficiary with the IBAN `AE070331234567890123456` (another bank), send a transfer, then:
+
+```bash
+curl -s -H "Authorization: Bearer <access token>" localhost:8000/api/transfers/<id>/pacs008/
+```
+
+- [ ] Find the UETR in the XML and compare it with `GET /api/transfers/<id>/`.
+- [ ] Note the settlement date. What would it be at 14:05 on a Friday?
+
+## 27. Read it, in this order
+
+| # | File | What to understand |
+|---|---|---|
+| 1 | `tests/golden/pacs008_local.xml` | What a message looks like. |
+| 2 | `payments/schemas/pacs.008.001.08.subset.xsd` | Sequence order, patterns, code lists. |
+| 3 | `payments/iso20022.py` | `settlement_date`, `build_pacs008`, the safe parser, `validate`. |
+| 4 | `tests/test_pacs008.py` | The four kinds of XML test, plus XXE. |
+
+## 28. Break it
+
+1. [ ] Swap the order of `<Dbtr>` and `<DbtrAcct>` in `build_pacs008`. Which tests fail, and what does the schema error say?
+2. [ ] Change `WEEKEND` to `{4, 5}`. Which settlement-date cases fail?
+3. [ ] Change the remarks to an empty string but keep the `RmtInf` element. Why does the schema reject `<Ustrd></Ustrd>`?
+4. [ ] Change one character in `tests/golden/pacs008_local.xml`. Read the failure. What process should a team follow before updating a golden file?
+
+## 29. Explain it
+
+1. What is pacs.008, and how is it different from pain.001?
+2. What's a UETR, and why does it matter for tracking payments?
+3. Why isn't schema validation enough to test a payment message?
+4. What's a golden-file test? When is it useful, and what's the risk?
+5. What's XXE, and how does this code prevent it?
+6. Why does the settlement date depend on the time zone and the weekend?
+
+## 30. Study material
+
+- ⭐ [ISO 20022 message definitions](https://www.iso20022.org/iso-20022-message-definitions) (search "pacs.008")
+- ⭐ [OWASP XXE Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html)
+- [SWIFT: ISO 20022 programme](https://www.swift.com/standards/iso-20022) and [SWIFT gpi / UETR](https://www.swift.com/our-solutions/swift-gpi)
+- [lxml: validation with XML Schema](https://lxml.de/validation.html#xmlschema)
+
+## 31. Quiz (tonight)
+
+**Part A: concepts (1 point each)**
+
+1. What do `pacs`, `008` and `001.08` mean?
+2. Which element identifies a payment across every bank it passes through?
+3. What does `ChrgBr` `SLEV` mean?
+4. Which days are the UAE weekend now, and since when?
+5. Which transfers get a pacs.008 message, and which status code do the others get?
+6. Why is the schema called a "subset"?
+
+**Part B: read the code (2 points each)**
+
+7. Why does `build_pacs008` format the amount with `:.2f` instead of `str(float(...))`?
+8. How does the code identify the creditor's bank without a BIC?
+9. In `validate`, what are the three ways a message can fail, and why does it never raise?
+10. Why does the golden test fix the UETR and the reference?
+
+**Part C: predict, then run (3 points each)**
+
+11. A transfer is made at 13:59:59 on Friday 27 Nov 2026, Dubai time. Settlement date? And at 14:00:00?
+12. A beneficiary is named `Ali & Sons <FZE>`. What appears inside `<Nm>` in the raw XML, and what does a parser read back?
+13. Someone sends `validate()` a message with `<!DOCTYPE d [<!ENTITY x SYSTEM "file:///etc/passwd">]>`. What happens, step by step?
+
+<details>
+<summary>Answers</summary>
+
+1. `pacs` = payments clearing and settlement (bank-to-bank); `008` = FI to FI customer credit transfer; `001.08` = variant 1, version 8.
+2. `PmtId/UETR` (with `EndToEndId` also kept end to end).
+3. Charges follow the service level agreed in the clearing system (each side pays its own bank under the scheme's rules).
+4. Saturday and Sunday, since January 2022 (previously Friday and Saturday).
+5. Only LOCAL transfers (to another UAE bank). OWN and INTERNAL get 409 `not_a_network_payment`.
+6. It only contains the elements Ledgerly sends (with the real names, order and rules); the official schema has many more optional elements.
+7. Floats can't represent most decimal amounts exactly and `str(float(Decimal("500")))` gives `500.0`; `:.2f` on a Decimal gives exact `500.00`.
+8. It takes the 3-digit UAE bank code from characters 5–7 of the creditor's IBAN and sends it in `CdtrAgt/FinInstnId/Othr/Id`.
+9. Not well-formed XML (syntax error), a DOCTYPE present, or schema violations (including the validator's own internal error). It returns error strings instead of raising so callers and tests get a clear list and a bad message can never crash the caller.
+10. Both are random in real use; fixing them makes the output byte-identical every run, so any difference is a real change in the builder.
+11. 13:59:59 Friday → same day, 27 Nov (Friday is a business day). 14:00:00 → next business day, Monday 30 Nov.
+12. Raw XML: `Ali &amp; Sons &lt;FZE&gt;`. A parser reads back `Ali & Sons <FZE>`, unchanged.
+13. The safe parser parses it without loading the DTD, resolving entities or touching the network, so the file is never read; `validate` sees the DOCTYPE and returns `["DOCTYPE is not allowed in payment messages"]` before schema validation.
+
+</details>
