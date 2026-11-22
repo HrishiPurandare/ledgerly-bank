@@ -225,6 +225,23 @@ def test_yesterday_in_dubai_does_not_count_even_if_it_is_today_in_utc(user, curr
     assert rules.sent_today(user, now) == Decimal("0")
 
 
+def test_a_transfer_stamped_after_now_still_counts_toward_the_limit(user, current, make_beneficiary):
+    """The race from CI, made deterministic: request B reads `now`, request A gets the lock first and
+    commits a transfer stamped one second later. B's daily total must still include it."""
+    from payments import rules
+    from payments.services import create_transfer
+
+    beneficiary = make_beneficiary()
+    b_now = timezone.now()
+    create_transfer(
+        user,
+        {"from_account": current.id, "beneficiary": beneficiary.id, "amount": Decimal("30000.00")},
+        idempotency_key="request-a",
+        now=b_now + timedelta(seconds=1),
+    )
+    assert rules.sent_today(user, b_now) == Decimal("30000.00")
+
+
 # ---------- new beneficiary: AED 10,000 in the first 24 hours ----------
 
 

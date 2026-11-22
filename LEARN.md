@@ -348,6 +348,7 @@ Stripe's API works the same way; mentioning that in an interview shows you know 
 ## 18. Bugs found while building
 
 - **A pasted IBAN was rejected.** Customers paste `AE07 0331 2345 6789 0123 456` (27 characters with spaces). The serializer's `max_length=23` refused it before the code that removes spaces could run. The input now accepts up to 34 characters and stores the clean 23.
+- **A race the lock didn't stop (found later, by CI on Postgres).** The concurrency test passed on the first CI run and failed on the second: two AED 30,000 transfers from different accounts both went through. The customer lock worked; the *time window* didn't. Each request reads `now` before waiting for the lock, and `sent_today` only counted transfers up to that `now`. If request B read the clock first but lost the race for the lock, request A's transfer was stamped a moment after B's `now`, so B never saw it. Fix: count everything since the start of the Dubai day (no upper bound). `test_a_transfer_stamped_after_now_still_counts_toward_the_limit` reproduces it on every run, with no threads and no luck. Lessons: a concurrency test that passes once proves little; and when a flaky failure appears, turn it into a deterministic test before fixing it.
 - Mutation check, 6 of 6 caught: refusing the exact balance, the daily limit off by one fils, counting own transfers toward the limit, using the UTC day, not detecting key reuse, not saving wrong OTP attempts.
 
 ## 19. Run it

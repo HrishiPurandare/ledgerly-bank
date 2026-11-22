@@ -36,7 +36,10 @@ def sent_today(user, now: datetime) -> Decimal:
     from payments.models import Transfer
 
     total = (
-        Transfer.objects.filter(owner=user, created_at__gte=start_of_day(now), created_at__lte=now)
+        # No upper bound on purpose: `now` is read before the customer lock is taken, so a transfer that
+        # won the race for the lock can be stamped a moment AFTER this `now`. It still counts.
+        # (Found by test_two_accounts_cannot_both_slip_under_the_daily_limit on Postgres.)
+        Transfer.objects.filter(owner=user, created_at__gte=start_of_day(now))
         .exclude(kind=Transfer.Kind.OWN)
         .aggregate(total=Sum("amount"))["total"]
     )
