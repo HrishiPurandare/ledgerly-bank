@@ -5,6 +5,132 @@ info:
   description: Fictional banking API used as the system under test for a test-automation
     portfolio.
 paths:
+  /api/accounts/:
+    get:
+      operationId: accounts_list
+      description: The logged-in customer's accounts.
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAccountList'
+          description: ''
+  /api/accounts/{id}/:
+    get:
+      operationId: accounts_retrieve
+      description: 'One account. Someone else''s account is a 404, not a 403: we don''t
+        even confirm it exists.'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+  /api/accounts/{id}/transactions/:
+    get:
+      operationId: accounts_transactions_list
+      description: The account's statement, newest first, with filters and pagination.
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+          enum:
+          - ATM
+          - BILL
+          - CARD
+          - FEE
+          - INTEREST
+          - SALARY
+          - TRANSFER_IN
+          - TRANSFER_OUT
+        description: |-
+          * `SALARY` - Salary
+          * `TRANSFER_IN` - Transfer In
+          * `TRANSFER_OUT` - Transfer Out
+          * `CARD` - Card
+          * `BILL` - Bill
+          * `ATM` - Atm
+          * `FEE` - Fee
+          * `INTEREST` - Interest
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: direction
+        schema:
+          type: string
+          enum:
+          - CREDIT
+          - DEBIT
+        description: |-
+          * `CREDIT` - Credit
+          * `DEBIT` - Debit
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: max_amount
+        schema:
+          type: number
+      - in: query
+        name: min_amount
+        schema:
+          type: number
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Text in description or counterparty
+      tags:
+      - accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTransactionList'
+          description: ''
   /api/auth/login/:
     post:
       operationId: auth_login_create
@@ -119,6 +245,83 @@ paths:
           description: ''
 components:
   schemas:
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        iban:
+          type: string
+          readOnly: true
+        iban_display:
+          type: string
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TypeEnum'
+          readOnly: true
+        type_label:
+          type: string
+          readOnly: true
+        nickname:
+          type: string
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        balance:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        opened_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - balance
+      - currency
+      - iban
+      - iban_display
+      - id
+      - nickname
+      - opened_at
+      - status
+      - type
+      - type_label
+    CategoryEnum:
+      enum:
+      - SALARY
+      - TRANSFER_IN
+      - TRANSFER_OUT
+      - CARD
+      - BILL
+      - ATM
+      - FEE
+      - INTEREST
+      type: string
+      description: |-
+        * `SALARY` - Salary
+        * `TRANSFER_IN` - Transfer In
+        * `TRANSFER_OUT` - Transfer Out
+        * `CARD` - Card
+        * `BILL` - Bill
+        * `ATM` - Atm
+        * `FEE` - Fee
+        * `INTEREST` - Interest
+    DirectionEnum:
+      enum:
+      - CREDIT
+      - DEBIT
+      type: string
+      description: |-
+        * `CREDIT` - Credit
+        * `DEBIT` - Debit
     Health:
       type: object
       properties:
@@ -129,6 +332,52 @@ components:
       required:
       - database
       - status
+    PaginatedAccountList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+    PaginatedTransactionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
     RegisterRequest:
       type: object
       properties:
@@ -149,6 +398,14 @@ components:
       - email
       - full_name
       - password
+    StatusEnum:
+      enum:
+      - ACTIVE
+      - FROZEN
+      type: string
+      description: |-
+        * `ACTIVE` - Active
+        * `FROZEN` - Frozen
     TokenObtainPair:
       type: object
       properties:
@@ -194,6 +451,63 @@ components:
           minLength: 1
       required:
       - refresh
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        reference:
+          type: string
+          readOnly: true
+        direction:
+          allOf:
+          - $ref: '#/components/schemas/DirectionEnum'
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        balance_after:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        counterparty:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - balance_after
+      - category
+      - counterparty
+      - created_at
+      - description
+      - direction
+      - id
+      - reference
+    TypeEnum:
+      enum:
+      - CURRENT
+      - SAVINGS
+      - PREMIER
+      type: string
+      description: |-
+        * `CURRENT` - Everyday Current Account
+        * `SAVINGS` - Smart Savings Account
+        * `PREMIER` - Premier Account
     User:
       type: object
       properties:
