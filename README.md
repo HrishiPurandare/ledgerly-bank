@@ -3,6 +3,7 @@
 ![CI](https://github.com/HrishiPurandare/ledgerly-bank/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![Django](https://img.shields.io/badge/Django-5.2%20LTS-0C4B33)
+![Angular](https://img.shields.io/badge/Angular-21-DD0031)
 
 A small, realistic banking app built **to be tested**. It's the shared system under test for my test-automation portfolio: Playwright, API, Cypress and Kubernetes projects all run against it, and the [Ask Ledgerly chatbot](https://github.com/HrishiPurandare/ai-quality-engineering-lab) answers questions about the same bank's policies.
 
@@ -18,10 +19,11 @@ Ledgerly Bank is fictional. All customers, accounts and money are invented test 
 | Accounts and statements (filters, pagination), owner-only access, deterministic seed data | ✅ |
 | Beneficiaries (OTP by email) and transfers with the bank's real limit rules, idempotency and row locking | ✅ |
 | ISO 20022 `pacs.008` messages for transfers to other banks (schema-validated, golden-file tested) | ✅ |
-| Angular front end with `data-testid` everywhere | 🔜 |
+| Angular 21 front end: login, session refresh, route guards, accounts page, `data-testid` everywhere | ✅ (login + accounts) |
+| Dashboard, statements, transfer screens | 🔜 |
 | Docker Compose (Postgres + API + UI) | 🔜 |
 
-## Quick start (API)
+## Quick start
 
 ```bash
 cd backend
@@ -33,13 +35,19 @@ python manage.py seed             # demo customers: sara@ / omar@ / lina@example
 python manage.py runserver        # http://localhost:8000/api/docs
 ```
 
+```bash
+cd frontend                       # second terminal; Node 22
+npm ci && npm start               # http://localhost:4200 (proxies /api to :8000)
+```
+
 ## Tests
 
 ```bash
-cd backend && pytest -q
+cd backend && pytest -q           # 155 API tests (+3 concurrency tests on Postgres)
+cd frontend && npm test           # 53 Angular unit tests (Vitest)
 ```
 
-CI runs every test on **SQLite and Postgres 17**, fails on missing migrations, and fails if the committed `openapi.yaml` no longer matches the code (an unreviewed API contract change).
+CI runs every API test on **SQLite and Postgres 17**, fails on missing migrations, and fails if the committed `openapi.yaml` no longer matches the code (an unreviewed API contract change).
 
 ## Design choices
 
@@ -53,7 +61,8 @@ CI runs every test on **SQLite and Postgres 17**, fails on missing migrations, a
 - **Deterministic demo data.** The same seed always gives the same customers, IBANs (valid mod-97 check digits) and statements, and a test proves every balance equals the sum of its transactions. The seed command refuses to run with DEBUG off, because its passwords are public.
 - **No user enumeration.** A wrong password and an unknown email get the same 401 response.
 - **Refresh tokens rotate and the old one is blacklisted**, so a stolen, already-used refresh token can't be replayed.
-- **Django 5.2 LTS**, not the newest 6.x: supported until 2028, and every dependency here is proven on it.
+- **The web app treats the session carefully**: an expired access token is refreshed silently, and requests that fail together share **one** refresh call (verified against the real API). If the refresh fails, the user lands on the login page with a "session expired" message and is sent back to where they were afterwards. `returnUrl` only accepts same-site paths, so the login page can't be used as an open redirect.
+- **Django 5.2 LTS**, not the newest 6.x: supported until 2028, and every dependency here is proven on it. Likewise **Angular 21 (LTS until mid-2027)**, because Angular 22 needs Node 22.22+.
 
 ## License
 

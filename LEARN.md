@@ -584,3 +584,163 @@ curl -s -H "Authorization: Bearer <access token>" localhost:8000/api/transfers/<
 13. The safe parser parses it without loading the DTD, resolving entities or touching the network, so the file is never read; `validate` sees the DOCTYPE and returns `["DOCTYPE is not allowed in payment messages"]` before schema validation.
 
 </details>
+
+---
+
+# Part 5: Angular front end and login (Forge90 day 14)
+
+This is the screen every UI test in the portfolio (Playwright TS and Python, Cypress) will drive. You don't have to become an Angular developer, but you should be able to read a component, find its `data-testid`s and explain how login and sessions work, because that's what UI tests fight with most.
+
+Budget: two 2-hour sessions (concepts and running it in the first; tests and break-it in the second), plus the quiz.
+
+## 32. Key concepts
+
+**Angular 21, the modern way:**
+- **Standalone components:** each component declares its own `imports`, with no NgModules.
+- **Signals:** `signal()`, `computed()`. State that the template reads and that updates the view when it changes (`auth.isLoggedIn()`, `submitting()`).
+- **Zoneless:** no zone.js. The view updates when signals change, not after every browser event. Tests wait with `await fixture.whenStable()`.
+- **New control flow:** `@if`, `@for (... track ...)`, `@switch` in templates.
+- **Lazy routes:** `loadComponent` downloads a page only when it's visited (the build shows `login` and `accounts` as separate chunks).
+
+**Why Angular 21 and not 22?** Angular 22 needs Node 22.22+, and this Mac has 22.12. Angular 21 is in long-term support until mid-2027. Same reasoning as Django 5.2 LTS: choose what's supported and runs on the team's machines, and write the reason down.
+
+**How login works, end to end:**
+
+```
+Login page --POST /api/auth/login/--> tokens --> stored --> GET /api/auth/me/ --> user signal --> go to returnUrl
+Every API call: interceptor adds "Authorization: Bearer <access>"
+401? --> POST /api/auth/refresh/ (once, shared) --> retry with the new token
+Refresh fails? --> log out --> /login?returnUrl=...&expired=1 --> "Your session has expired"
+```
+
+| Piece | File | Job |
+|---|---|---|
+| `AuthService` | `core/auth.service.ts` | Tokens and user as signals; login, refresh (shared), logout. |
+| `authInterceptor` | `core/auth.interceptor.ts` | Adds the token to `/api/` calls only (never to other sites or the public auth endpoints); refresh-and-retry on 401. |
+| `authGuard` / `guestGuard` | `core/auth.guard.ts` | Private pages need a login; the login page bounces logged-in users. |
+| `Login` | `pages/login/` | Reactive form, field errors, API errors by status, double-submit protection. |
+| `Accounts` | `pages/accounts/` | Loading / error + retry / empty / list states. |
+| `MoneyPipe` | `shared/money.pipe.ts` | `"32079.82"` → `AED 32,079.82` with string operations, never a float. |
+
+**Where the tokens live, and the trade-off.** Tokens are in `localStorage` so a reload keeps you logged in and Playwright can save a logged-in state per role (P-02). The risk: any script injected into the page (XSS) can read them. A production bank would use **httpOnly, Secure, SameSite cookies** set by the server (unreadable by JavaScript), with CSRF protection. Being able to name this trade-off in an interview matters more than the choice itself.
+
+**Open redirect.** `/login?returnUrl=https://evil.example` must not send a freshly logged-in customer to a phishing site. `safeReturnUrl` only accepts paths starting with a single `/`; `//evil.example` (a protocol-relative URL) is rejected too.
+
+**One refresh for many failures.** When the access token expires, the accounts list and the profile request both get 401 at the same moment. Without sharing, each would call `/refresh/`. With rotation + blacklist (Part 1), the second refresh would use an already-used refresh token and get 401, logging the user out for no reason. `refresh()` keeps one in-flight call (`shareReplay`) for everyone. This was verified against the real API in the browser: two 401s produced exactly one refresh call, and both requests were retried.
+
+**`data-testid` conventions:**
+- Unique things: `login-email`, `login-submit`, `accounts-empty`.
+- Repeated things: each row has `data-testid="account-<id>"` *and* `data-test-role="account"`, so a test can either find all rows or one specific account. Inside each row, `account-balance`, `account-iban`, `account-frozen`.
+- Every state has its own id (`accounts-loading`, `accounts-error`, `accounts-retry`), so tests can wait for a state instead of sleeping.
+
+## 33. How the front end is tested (53 Vitest tests)
+
+- **`HttpTestingController`** replaces the network: tests see each request the app makes (method, URL, body, headers) and decide the response. `http.verify()` after each test fails if anything unexpected was sent, or an expected request never happened.
+- The login tests drive the real template through `data-testid`s (type, click, read text), the same way a Playwright test will, just without a browser.
+- **Mutation check:** 4 of 4 caught: allowing `//evil.example` as a return URL, sending the token to other sites, removing the shared refresh, refreshing on every error instead of only on 401.
+- **Manual end-to-end check** against the real Django API: logged-out redirect with `returnUrl`; login as Sara; a broken access token refreshed silently; broken tokens all round → login page with "session expired".
+
+## 34. Problems hit while building
+
+- **npm 10.9 crashed while resolving the dependency tree** (`Cannot read properties of null (reading 'edgesOut')`), triggered by Vitest's optional peer packages. `--legacy-peer-deps` would hide it by skipping peer checks; instead the lockfile was created once with npm 11 (`npx npm@11.21.2 install`). `npm ci` with the default npm 10 then works from that lockfile, so CI needs nothing special.
+- **A test configured TestBed after injecting from it.** In `TestBed.inject(Router).serializeUrl(run(guard))`, JavaScript evaluates `TestBed.inject(...)` *before* `run(...)`, which configures the module. Order of evaluation matters in tests too.
+
+## 35. Run it
+
+```bash
+cd backend && python manage.py seed --reset && python manage.py runserver
+```
+
+```bash
+cd frontend && npm ci && npm start
+```
+
+Open http://localhost:4200:
+- [ ] Go straight to `/accounts`. Where do you land, and what's in the URL?
+- [ ] Log in with a wrong password, then 11 times quickly. What messages appear?
+- [ ] Log in as `lina@example.com`. How does the frozen account look?
+- [ ] In DevTools → Application → Local Storage, edit `access` to garbage and reload. What happens in the Network tab?
+- [ ] Try `/login?returnUrl=https://example.com` and log in. Where do you go?
+
+```bash
+cd frontend && npm test
+```
+
+## 36. Read it, in this order
+
+| # | File | What to understand |
+|---|---|---|
+| 1 | `src/app/app.routes.ts`, `app.config.ts` | Routes, guards, lazy loading, the interceptor registration. |
+| 2 | `core/auth.service.ts` | Signals; storage and its trade-off; shared refresh. |
+| 3 | `core/auth.interceptor.ts` | Which requests get a token; refresh-and-retry. |
+| 4 | `pages/login/login.ts` + `.html` | Form validation, error messages, `safeReturnUrl`. |
+| 5 | `pages/accounts/*` | The four states and their test ids. |
+| 6 | The `*.spec.ts` files | `HttpTestingController`, driving the template by test id. |
+
+## 37. Break it
+
+1. [ ] Remove `shareReplay(1)` from `refresh()`. Which test fails? With the real API, what would the user experience when two requests expire together?
+2. [ ] Change `safeReturnUrl` to accept any string. Log in via `/login?returnUrl=https://example.com`. Explain the attack in one sentence.
+3. [ ] Remove `[disabled]="submitting()"` from the login button. Which test fails? Why does a double-submitted login matter less than a double-submitted transfer (Part 3)?
+4. [ ] Change the accounts list to show `account.balance` without the `money` pipe. Which tests fail, and what does the screen show?
+
+## 38. Explain it
+
+1. What's an HTTP interceptor, and what does this one do?
+2. Why share one refresh call between failing requests?
+3. Where are tokens stored, what's the risk, and what would production do?
+4. What's an open redirect, and how is it prevented here?
+5. Why give every UI state its own `data-testid`?
+6. Mocked HTTP in unit tests vs the real API in E2E tests: what does each catch?
+7. Why Angular 21 rather than 22?
+
+## 39. Study material
+
+- ⭐ [Angular: signals](https://angular.dev/guide/signals) and [HTTP interceptors](https://angular.dev/guide/http/interceptors)
+- ⭐ [OWASP: Unvalidated redirects and forwards cheat sheet](https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html)
+- [Angular: testing HTTP requests](https://angular.dev/guide/http/testing)
+- [OWASP: HTML5 security cheat sheet, local storage](https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#local-storage)
+- [Playwright: authentication and storage state](https://playwright.dev/docs/auth) (where P-02 picks up)
+
+## 40. Quiz (tonight)
+
+**Part A: concepts (1 point each)**
+
+1. Name three modern Angular features used here.
+2. Which requests does the interceptor add a token to?
+3. What URL does a logged-out visitor to `/accounts` land on?
+4. What does the login page show for a 401, a 429 and a network failure?
+5. Which two `data-testid` attributes does each account row have?
+6. Why does the money pipe never call `Number()`?
+
+**Part B: read the code (2 points each)**
+
+7. In `refresh()`, what do `finalize` and `shareReplay(1)` each do?
+8. Why does the interceptor check `isPublic` before adding a token?
+9. What does `http.verify()` in `afterEach` catch?
+10. In the double-click test, how does it prove only one request was sent?
+
+**Part C: predict, then run (3 points each)**
+
+11. Both tokens in localStorage are garbage and the user opens `/accounts`. List the HTTP calls in order and where the user ends up.
+12. `returnUrl=//evil.example/login`. Where does the user go after logging in, and why?
+13. A Playwright test logs in once, saves storage state, and reuses it for 30 minutes of tests. The access token lasts 15 minutes. What happens at minute 16, and which code makes the tests keep passing?
+
+<details>
+<summary>Answers</summary>
+
+1. Any three of: standalone components, signals/computed, zoneless change detection, `@if`/`@for`/`@switch` control flow, lazy `loadComponent` routes, functional interceptors and guards, router input binding.
+2. Same-site `/api/` calls, except login, refresh, register and health; never requests to other sites.
+3. `/login?returnUrl=%2Faccounts`.
+4. 401: "Email or password is incorrect." 429: "Too many attempts. Please wait a minute and try again." Network failure (status 0): "Can't reach Ledgerly Bank. Check your connection and try again."
+5. `data-testid="account-<id>"` and `data-test-role="account"`.
+6. Converting to a JavaScript number turns the amount into a float, which can't represent every cent exactly; string operations show exactly what the API sent.
+7. `shareReplay(1)` makes concurrent subscribers share one HTTP call and its result; `finalize` clears `refreshInFlight` when it completes or fails, so the next expiry starts a fresh refresh.
+8. Public endpoints don't need a token, and a 401 from login (wrong password) must not trigger a refresh loop.
+9. Requests the app made that no test expected, or expected requests that were never sent.
+10. After the button is disabled, a second click is attempted and then `http.expectOne('/api/auth/login/')` passes: `expectOne` fails if there were two matching requests.
+11. `GET /api/auth/me/` and `GET /api/accounts/` → both 401 → one `POST /api/auth/refresh/` → 401 → logout → `/login?returnUrl=%2Faccounts&expired=1` with the "session expired" notice.
+12. `/accounts`: `safeReturnUrl` rejects anything starting with `//` (a protocol-relative URL that would leave the site).
+13. The first API call after minute 15 gets 401; the interceptor refreshes with the stored refresh token (valid for 1 day) and retries, so the test continues. One catch: rotation stores a *new* refresh token in that browser context only, so parallel workers that share the same saved state can invalidate each other's refresh token. That's a real issue P-02 will have to handle, e.g. a fresh login per worker.
+
+</details>
