@@ -152,3 +152,137 @@ pytest -q
 13. Yes. The default protects you only if nobody overrides it. It catches: someone adding `permission_classes = [AllowAny]` "temporarily", a view that sets `authentication_classes = []`, or a copy-pasted public view. The test checks behaviour, not configuration.
 
 </details>
+
+---
+
+# Part 2: Accounts, statements and demo data (Forge90 day 11)
+
+Budget: one 2-hour session, plus the quiz (45 min).
+
+## 9. Key concepts
+
+**The data model:**
+
+| Model | Holds | Rule |
+|---|---|---|
+| `Account` | owner, IBAN, type (Current / Savings / Premier, the products in the chatbot's policies), balance, status (ACTIVE / FROZEN) | Read-only through the API: balances only change through transactions. |
+| `Transaction` | account, direction (CREDIT in / DEBIT out), category, amount (always positive), `balance_after`, description, counterparty, unique reference | Immutable: a mistake is fixed with a new transaction, never an edit. That's how real ledgers work, and it keeps an audit trail. |
+
+**Money is `Decimal`.** In floating point, `0.1 + 0.2 == 0.30000000000000004`. Banking needs exact cents, so every amount is `DecimalField(max_digits=14, decimal_places=2)`, and the API sends money as **strings** (`"1000.00"`) so a JavaScript client can't silently turn it into a float.
+
+**The ledger invariant:** `balance == sum(credits) - sum(debits)`, and each transaction's `balance_after` is the running balance. A test checks it for every seeded account. That test found a real bug (below).
+
+**IBAN:** `AE` + 2 check digits + 3-digit bank code + 16-digit account number = 23 characters. The check digits use **mod-97** (ISO 13616): move the first 4 characters to the end, turn letters into numbers (A=10 … Z=35), and the whole number mod 97 must be 1. It catches every single-digit typo. Ledgerly uses bank code `999`, which no real UAE bank uses.
+
+**Broken object-level authorization (BOLA / IDOR), OWASP API #1.** The most common serious API bug: `/api/accounts/42/` returns account 42 to *anyone logged in*, because the code checks "is logged in" but not "owns this account". Here every query is filtered by `owner=request.user`, and:
+- someone else's account → **404, not 403**. A 403 would confirm the account exists;
+- a test checks that someone else's account and a non-existent one return the **identical** response;
+- another test logs in as the real owner and gets 200, proving the 404 isn't just a broken endpoint.
+
+**Filters that fail loudly.** `?direction=SIDEWAYS` returns **400**, not an empty list. An empty list would make a typo in a test or the UI look like "no transactions".
+
+**Pagination:** 20 per page with `count`, `next` and `previous`. Tests check the boundary (25 rows → 20 + 5, and `next` is `null` on the last page).
+
+**Deterministic seed data.** `python manage.py seed` creates 3 customers, 6 accounts and ~370 transactions over 90 days from `random.Random(42)`. Same seed + same `--today` = byte-identical data, so tests and demos can say "Sara has a frozen account" and stay true. It includes edge cases on purpose: a frozen account, a Premier account with a large balance, a savings account with interest. It refuses to run with DEBUG off (`LEDGERLY_ALLOW_SEED=true` to override), because the demo password is public.
+
+## 10. Bugs found while building
+
+1. **Broken running balance in the seed data.** Transactions on the same day got random times, so a card payment could be stamped *before* the salary it was paid from. Sorted by time, the statement showed a running balance that jumped around. `test_balance_after_is_a_consistent_running_balance_and_never_negative` caught it; same-day times now always increase. A tester looking at the statement screen would have reported exactly this.
+2. **Schema warnings.** The views build their queryset from `request.user`, which doesn't exist while the OpenAPI schema is generated, so drf-spectacular couldn't tell which model the endpoints return. CI's `--fail-on-warn` stopped it; fixed with `queryset = Account.objects.none()` and a `swagger_fake_view` check.
+3. Two of my own test mistakes (an IBAN's bank code isn't at the start; a fixture stored a balance as a string). Worth saying in an interview: not every red test is a product bug.
+
+**Mutation check:** removing the owner filter from the account detail view (2 tests failed), from the statement view (1 failed), and making `date_to` exclusive (1 failed). All caught.
+
+## 11. Run it
+
+```bash
+cd backend
+python manage.py migrate
+python manage.py seed --today 2026-11-22
+python manage.py runserver
+```
+
+In Swagger (http://localhost:8000/api/docs), log in as `sara@example.com` / `Ledgerly-Demo-2026`:
+- [ ] `GET /api/accounts/`, then a statement with `?category=CARD&min_amount=100`.
+- [ ] Log in as `omar@example.com` and try one of Sara's account ids. What do you get?
+- [ ] Try `?direction=SIDEWAYS`. Why is 400 better than an empty list?
+
+## 12. Read it, in this order
+
+| # | File | What to understand |
+|---|---|---|
+| 1 | `banking/models.py` | Decimal money, immutable transactions, the positive-amount constraint. |
+| 2 | `banking/iban.py` | mod-97 in ~10 lines. |
+| 3 | `banking/views.py` | Every queryset is filtered by owner; 404 vs 403. |
+| 4 | `banking/filters.py` | Statement filters; inclusive dates. |
+| 5 | `banking/seed.py` | Deterministic generation; increasing times; no overdraft. |
+| 6 | `tests/test_accounts.py` | IDOR tests, filters, pagination, read-only. |
+| 7 | `tests/test_seed.py` | Reproducibility, the ledger invariant, the production guard. |
+
+## 13. Break it
+
+1. [ ] In `AccountTransactions.get_queryset`, remove `owner=self.request.user`. Which test fails? Explain the attack in one sentence.
+2. [ ] Change `DecimalField` to `FloatField` for `amount` (and migrate). Which tests break, and what would a customer see?
+3. [ ] Seed with `--seed 1` and with `--seed 2`. Compare Sara's balances. Run `--seed 1` twice. Same?
+4. [ ] Revert the "increasing times" fix in `seed.py` and run `test_seed.py`. Read the failure message: which transaction and which balances?
+
+## 14. Explain it
+
+1. What's BOLA/IDOR, and how do you test for it?
+2. Why 404 rather than 403 for someone else's account?
+3. Why must money never be a float, and how does the API send it?
+4. Why are transactions immutable?
+5. What does the mod-97 check catch?
+6. Why must test data be deterministic? What's the risk with random data?
+7. An invalid filter returns an empty list instead of 400. Why is that a bug?
+
+## 15. Study material
+
+- ⭐ [OWASP API1:2023 Broken Object Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/)
+- ⭐ [DRF filtering](https://www.django-rest-framework.org/api-guide/filtering/) and [django-filter](https://django-filter.readthedocs.io/)
+- [IBAN check digits (Wikipedia)](https://en.wikipedia.org/wiki/International_Bank_Account_Number#Validating_the_IBAN)
+- [Python decimal module](https://docs.python.org/3/library/decimal.html): read "Quick-start tutorial"
+- Martin Fowler, [Accounting patterns](https://martinfowler.com/eaaDev/AccountingNarrative.html): why ledgers append and never edit
+
+## 16. Quiz (tonight)
+
+**Part A: concepts (1 point each)**
+
+1. What are the four parts of a UAE IBAN, and how long is it?
+2. What does a CREDIT do to the balance? A DEBIT?
+3. What status do you get for someone else's account, and why that one?
+4. Why does the API send `"1000.00"` and not `1000.0`?
+5. How many items per page, and how do you get page 2?
+6. Name two edge cases the seed data includes on purpose.
+
+**Part B: read the code (2 points each)**
+
+7. In `is_valid_uae_iban`, why are the first four characters moved to the end?
+8. Which line makes `/api/accounts/<someone else's id>/transactions/` a 404?
+9. What does `test_a_missing_account_and_someone_elses_look_identical` compare, and why both status *and* body?
+10. Why does `seed()` skip a debit instead of letting the balance go negative?
+
+**Part C: predict, then run (3 points each)**
+
+11. You add `?min_amount=420&max_amount=420` to the test statement. How many rows, and why?
+12. A developer adds `PATCH /api/accounts/{id}/` to rename an account and copies `AccountList`'s queryset. Which existing test still protects you, and what new test would you add?
+13. Production runs `python manage.py seed` by mistake. What happens? What if `LEDGERLY_ALLOW_SEED=true` is set there?
+
+<details>
+<summary>Answers</summary>
+
+1. `AE`, 2 check digits, a 3-digit bank code, a 16-digit account number: 23 characters.
+2. CREDIT adds money (in), DEBIT subtracts (out). The amount itself is always positive.
+3. 404. A 403 would confirm the account exists; 404 reveals nothing.
+4. Strings keep exact cents. A JSON number is parsed as a float by JavaScript and many other clients, which can't represent most cents exactly.
+5. 20 per page; `?page=2` (the response's `next` field gives the full URL).
+6. Any two of: a frozen account; a Premier account with a large balance; savings accounts with interest credits; salaries on the 25th; bills on the 3rd.
+7. The IBAN standard defines the check that way: country code and check digits go to the end, letters become numbers, and the result mod 97 must equal 1.
+8. `get_object_or_404(Account, pk=self.kwargs["pk"], owner=self.request.user)` in `AccountTransactions.get_queryset`.
+9. Status code and JSON body for someone else's account vs a non-existent id. A different body (e.g. "permission denied" vs "not found") would leak existence just like a different status.
+10. Demo customers have no overdraft facility; a negative balance would be unrealistic data and would break the "never negative" invariant tests rely on.
+11. One row (the AED 420.00 bill): both filters are inclusive (`gte` / `lte`).
+12. `test_api_security.py` still checks that anonymous requests get 401, but it can't catch BOLA. Add: Sara PATCHes Omar's account → 404 and the nickname is unchanged in the database. (And in code: `Account.objects.filter(owner=self.request.user)`.)
+13. It refuses with "Refusing to seed demo users with DEBUG off" and creates nothing. With the override set, it would create three customers with a public password: the override exists for CI and demo environments only, which is why it's opt-in and named so loudly.
+
+</details>
