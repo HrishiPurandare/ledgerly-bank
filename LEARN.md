@@ -286,3 +286,159 @@ In Swagger (http://localhost:8000/api/docs), log in as `sara@example.com` / `Led
 13. It refuses with "Refusing to seed demo users with DEBUG off" and creates nothing. With the override set, it would create three customers with a public password: the override exists for CI and demo environments only, which is why it's opt-in and named so loudly.
 
 </details>
+
+---
+
+# Part 3: Beneficiaries and transfers (Forge90 day 12)
+
+The heart of a bank: moving money. Every rule here is one an interviewer can ask you to test, and the tricky ones (boundaries, time zones, races, retries) are where real banking bugs live.
+
+Budget: two 2-hour sessions (concepts and running it in the first; the tests and break-it in the second), plus the quiz.
+
+## 17. Key concepts
+
+**The rules, straight from the bank's policy** (`data/policies/transfers-and-limits.md` in the chatbot repo):
+
+| Rule | Code | Error code |
+|---|---|---|
+| AED 50,000 per customer per day, across all accounts | `rules.sent_today` | `daily_limit_exceeded` |
+| AED 10,000 to a new beneficiary in the first 24 hours | `rules.in_cooling_off`, `sent_to_new_beneficiary` | `new_beneficiary_limit` |
+| Up to 100 beneficiaries | `add_beneficiary` | `too_many_beneficiaries` |
+| Adding a beneficiary needs an OTP | `confirm_beneficiary` | `otp_invalid`, `otp_expired`, `otp_locked` |
+| UAE IBAN: AE + 23 characters | `is_valid_uae_iban` (+ mod-97) | `invalid_iban` |
+
+Plus rules any bank has: enough balance (`insufficient_funds`), no frozen accounts (`account_frozen`, `destination_unavailable`), two different accounts (`same_account`), a confirmed beneficiary (`beneficiary_not_active`).
+
+**Decisions the policy didn't make (and you should be able to defend):**
+- **Own-account transfers don't count toward the daily limit.** The limit is about money leaving the customer; moving it between their own accounts doesn't.
+- **"Day" means the customer's local day in Dubai**, not UTC. 00:30 in Dubai is still the previous day in UTC; a UTC day would reset the limit at 4 AM local time.
+- **The 24 hours start when the beneficiary is confirmed**, not when it was first added.
+
+**Error codes, not just messages.** Every rejection returns `{"code": "daily_limit_exceeded", "detail": "..."}`. Tests and the UI match on the code; the wording can change freely.
+
+**Three kinds of transfer:** OWN (between your accounts), INTERNAL (to another Ledgerly customer: both sides update instantly), LOCAL (to another UAE bank: only your side is debited and the transfer is PENDING. Day 13 turns it into an ISO 20022 pacs.008 message). Each transfer gets a **UETR**, a UUID that identifies the payment end to end across banks.
+
+**OTP done properly:**
+- generated with `secrets` (unpredictable), not `random`;
+- sent by email, never in the API response;
+- stored as an HMAC hash, so a database leak doesn't reveal live codes;
+- compared in constant time (`hmac.compare_digest`);
+- expires after 5 minutes, and 3 wrong attempts lock the beneficiary for good;
+- a malformed code ("12345") is a 400 that does **not** use up an attempt.
+
+One subtle bug avoided: the wrong-attempt counter is saved **outside** a database transaction. If it were inside one, raising the error would roll the counter back, and an attacker would get unlimited guesses. A mutation test proves it.
+
+**Atomicity.** `_execute` runs in `transaction.atomic`: either the debit, the credit, both balance updates and the transfer record all happen, or none do. `test_one_fils_more_than_the_balance_is_refused_and_nothing_changes` checks that a refusal leaves no transaction, no transfer and unchanged balances.
+
+**Race conditions and locks.** Two requests at the same instant both read "balance 5,000", both pass the check, both debit 1,000 each... ten times over. The fix is `SELECT ... FOR UPDATE` (row locks):
+1. **Lock the customer row first.** Otherwise two transfers from *different* accounts both read "AED 0 sent today" and together send AED 60,000.
+2. **Then lock the accounts in id order.** Always the same order, so two transfers between the same accounts in opposite directions can't deadlock.
+3. **Re-read the balances after locking**; values read before the lock may be stale.
+
+`tests/test_concurrency.py` fires 10 transfers at the same instant with threads (10 × AED 1,000 from AED 5,000 → exactly 5 succeed). SQLite ignores `FOR UPDATE`, so these run only in CI's Postgres job. That's one more reason CI tests on both databases.
+
+**Idempotency.** The network drops the response, the app retries, the customer double-clicks: the same transfer arrives twice. The client sends an `Idempotency-Key` header (a UUID per transfer):
+- same key + same body → the **original response** again, header `Idempotent-Replayed: true`, no money moves;
+- same key + different body → **409 Conflict** (a client bug);
+- no key → 400;
+- keys are per customer; a unique constraint in the database makes the guarantee hold even when two identical requests race (the loser hits `IntegrityError` and answers like a replay).
+
+Stripe's API works the same way; mentioning that in an interview shows you know the pattern.
+
+## 18. Bugs found while building
+
+- **A pasted IBAN was rejected.** Customers paste `AE07 0331 2345 6789 0123 456` (27 characters with spaces). The serializer's `max_length=23` refused it before the code that removes spaces could run. The input now accepts up to 34 characters and stores the clean 23.
+- Mutation check, 6 of 6 caught: refusing the exact balance, the daily limit off by one fils, counting own transfers toward the limit, using the UTC day, not detecting key reuse, not saving wrong OTP attempts.
+
+## 19. Run it
+
+```bash
+cd backend
+python manage.py migrate
+python manage.py seed --reset
+python manage.py runserver
+```
+
+In Swagger, as `sara@example.com` / `Ledgerly-Demo-2026`:
+- [ ] `POST /api/beneficiaries/` with `{"name": "Omar Ali", "iban": "<Omar's IBAN from GET /api/accounts/ as omar>"}`. The OTP email prints in the **server terminal**. Confirm it with `POST /api/beneficiaries/{id}/confirm/`.
+- [ ] `POST /api/transfers/` with header `Idempotency-Key: test-1` and AED 12,000 to that beneficiary. Which error, and why?
+- [ ] Send AED 9,000, then send it again with the **same** key. Check the response header and Sara's balance.
+
+## 20. Read it, in this order
+
+| # | File | What to understand |
+|---|---|---|
+| 1 | `payments/rules.py` | The policy as pure functions over `now`; the Dubai day. |
+| 2 | `payments/otp.py` | secrets, HMAC, constant-time compare. |
+| 3 | `payments/services.py` `add_beneficiary`, `confirm_beneficiary` | Why confirm isn't atomic. |
+| 4 | `payments/services.py` `create_transfer`, `_execute` | Idempotency, lock order, the rule checks, atomic money movement. |
+| 5 | `payments/views.py` | Idempotency-Key header, the replay header. |
+| 6 | `tests/test_beneficiaries.py`, `tests/test_transfers.py` | Boundaries, "nothing changes" checks. |
+| 7 | `tests/test_concurrency.py` | Threads + barrier; why Postgres only. |
+
+## 21. Break it
+
+1. [ ] Remove the line that locks the customer (`get_user_model().objects.select_for_update()...`). Do the SQLite tests notice? Which Postgres test would? Explain the attack.
+2. [ ] Move `confirm_beneficiary` inside `@transaction.atomic`. Which test fails, and what can an attacker now do?
+3. [ ] Change `start_of_day` to use UTC. Which test fails? At what Dubai time would a customer's limit reset?
+4. [ ] Send the same transfer twice with **different** keys. Is that a bug? What would a real bank add (hint: duplicate-payment warnings)?
+
+## 22. Explain it
+
+1. What's idempotency, and how does the API guarantee a retry never pays twice?
+2. Why lock the customer row and not just the accounts?
+3. Why lock accounts in a fixed order?
+4. Why must the daily limit use Dubai's day, and what would go wrong with UTC?
+5. How is the OTP protected: in transit, at rest, and against guessing?
+6. Why are the concurrency tests skipped on SQLite, and what does that say about testing on only one database?
+7. How do you test a "first 24 hours" rule without waiting 24 hours?
+
+## 23. Study material
+
+- ⭐ [Stripe: idempotent requests](https://docs.stripe.com/api/idempotent_requests) and Brandur Leach, [Implementing Stripe-like idempotency keys in Postgres](https://brandur.org/idempotency-keys)
+- ⭐ [Django: select_for_update](https://docs.djangoproject.com/en/5.2/ref/models/querysets/#select-for-update) and [database transactions](https://docs.djangoproject.com/en/5.2/topics/db/transactions/)
+- [OWASP: testing for race conditions](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/README) (business logic testing chapter)
+- [OWASP Multifactor Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html)
+
+## 24. Quiz (tonight)
+
+**Part A: concepts (1 point each)**
+
+1. What are the three kinds of transfer, and which one stays PENDING?
+2. What's the daily limit, and which transfers don't count toward it?
+3. When does the new-beneficiary limit start and end?
+4. What does the `Idempotent-Replayed: true` header mean?
+5. What status does reusing a key for a different transfer get?
+6. How many wrong OTPs lock a beneficiary, and does "12345" count as one?
+
+**Part B: read the code (2 points each)**
+
+7. In `_execute`, why are balances re-read *after* `select_for_update`?
+8. In `create_transfer`, what happens on `IntegrityError`, and when does that happen?
+9. Why does `confirm_beneficiary` not use `@transaction.atomic`?
+10. In `test_the_daily_limit_spans_all_accounts`, why 46,000 + 4,000.01?
+
+**Part C: predict, then run (3 points each)**
+
+11. Sara has AED 5,000 and fires 10 simultaneous AED 1,000 transfers on Postgres. With the locks, what happens? Without any locks?
+12. At 00:30 on 23 Nov (Dubai), Sara has sent AED 45,000 since 00:00 on 22 Nov. How much can she send now, and why?
+13. A beneficiary was confirmed 23 hours ago and has received AED 6,000. Sara sends AED 5,000. What's the error message? And 2 hours later?
+
+<details>
+<summary>Answers</summary>
+
+1. OWN, INTERNAL, LOCAL. LOCAL (another bank) stays PENDING until the payment network settles it.
+2. AED 50,000 per customer per Dubai day, across all accounts. Transfers between the customer's own accounts don't count.
+3. It starts when the beneficiary is confirmed with the OTP (`activated_at`) and lasts 24 hours.
+4. The request was a retry with an already-used key and the same body: this is the original response, and no money moved.
+5. 409 Conflict, code `idempotency_key_reused`.
+6. Three wrong codes. "12345" isn't 6 digits, so it's rejected as a 400 by the serializer before checking, and doesn't count as an attempt.
+7. Values read before the lock may have been changed by another transaction that committed in between; only values read under the lock are safe to check and update.
+8. Two identical requests with the same key raced past the "already exists?" check; the database's unique constraint stopped the second insert. The code looks the transfer up again and answers like a replay (or 409 if the bodies differ).
+9. A wrong attempt raises an error; inside an atomic block that error would roll back the saved attempt counter, giving unlimited guesses.
+10. 46,000 + 4,000 = 50,000 exactly, the limit; the extra 0.01 tips it over. It also proves the limit adds up transfers from *different* accounts.
+11. With locks: exactly 5 succeed, 5 get `insufficient_funds`, balance ends at 0.00. Without locks: several requests read 5,000 before any write, so more than 5 can succeed and the balance can go negative (or updates overwrite each other).
+12. AED 50,000: it's a new Dubai day since 00:00 on 23 Nov, so yesterday's AED 45,000 doesn't count.
+13. `new_beneficiary_limit`: "New beneficiaries are limited to AED 10000.00 for 24 hours. You can send AED 4000.00 more until then." Two hours later the beneficiary is over 24 hours old, so only the daily limit applies and AED 5,000 goes through.
+
+</details>
