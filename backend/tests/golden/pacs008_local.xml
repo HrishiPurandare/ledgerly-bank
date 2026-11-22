@@ -1,0 +1,54 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>MSG-TRF261123GOLDEN01</MsgId>
+      <CreDtTm>2026-11-23T10:15:00+04:00</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <SttlmInf>
+        <SttlmMtd>CLRG</SttlmMtd>
+      </SttlmInf>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <InstrId>TRF261123GOLDEN01</InstrId>
+        <EndToEndId>TRF261123GOLDEN01</EndToEndId>
+        <UETR>3f2504e0-4f89-41d3-9a0c-0305e82c3301</UETR>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="AED">1250.75</IntrBkSttlmAmt>
+      <IntrBkSttlmDt>2026-11-23</IntrBkSttlmDt>
+      <ChrgBr>SLEV</ChrgBr>
+      <Dbtr>
+        <Nm>Sara Khan</Nm>
+      </Dbtr>
+      <DbtrAcct>
+        <Id>
+          <IBAN>AE639991000000000000000</IBAN>
+        </Id>
+      </DbtrAcct>
+      <DbtrAgt>
+        <FinInstnId>
+          <BICFI>LEDGAEADXXX</BICFI>
+        </FinInstnId>
+      </DbtrAgt>
+      <CdtrAgt>
+        <FinInstnId>
+          <Othr>
+            <Id>AE-BANK-033</Id>
+          </Othr>
+        </FinInstnId>
+      </CdtrAgt>
+      <Cdtr>
+        <Nm>Fatima Noor</Nm>
+      </Cdtr>
+      <CdtrAcct>
+        <Id>
+          <IBAN>AE070331234567890123456</IBAN>
+        </Id>
+      </CdtrAcct>
+      <RmtInf>
+        <Ustrd>Invoice 2026-114</Ustrd>
+      </RmtInf>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>

@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -6,7 +7,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from payments import services
+from payments import iso20022, services
 from payments.errors import TransferRejected
 from payments.models import Beneficiary, Transfer
 from payments.serializers import (
@@ -103,3 +104,20 @@ class TransferDetail(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Transfer.objects.filter(owner=self.request.user)
+
+
+class TransferPacs008(APIView):
+    """The ISO 20022 pacs.008 message for a transfer to another bank (XML)."""
+
+    @extend_schema(responses={(200, "application/xml"): OpenApiTypes.STR})
+    def get(self, request, pk: int):
+        transfer = get_object_or_404(Transfer, pk=pk, owner=request.user)
+        if transfer.kind != Transfer.Kind.LOCAL:
+            raise TransferRejected(
+                "not_a_network_payment", "Only transfers to other banks have a pacs.008 message.", 409
+            )
+        response = HttpResponse(
+            iso20022.build_pacs008(transfer), content_type="application/xml; charset=utf-8"
+        )
+        response["Content-Disposition"] = f'inline; filename="pacs008-{transfer.reference}.xml"'
+        return response

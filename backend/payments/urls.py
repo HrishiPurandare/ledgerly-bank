@@ -6,6 +6,7 @@ from payments.views import (
     BeneficiaryList,
     TransferDetail,
     TransferList,
+    TransferPacs008,
 )
 
 beneficiary_urls = [
@@ -16,4 +17,5 @@ beneficiary_urls = [
 transfer_urls = [
     path("", TransferList.as_view(), name="transfer-list"),
     path("<int:pk>/", TransferDetail.as_view(), name="transfer-detail"),
+    path("<int:pk>/pacs008/", TransferPacs008.as_view(), name="transfer-pacs008"),
 ]

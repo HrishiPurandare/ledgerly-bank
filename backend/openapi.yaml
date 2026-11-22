@@ -438,6 +438,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/Transfer'
           description: ''
+  /api/transfers/{id}/pacs008/:
+    get:
+      operationId: transfers_pacs008_retrieve
+      description: The ISO 20022 pacs.008 message for a transfer to another bank (XML).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - transfers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/xml:
+              schema:
+                type: string
+          description: ''
 components:
   schemas:
     Account:
