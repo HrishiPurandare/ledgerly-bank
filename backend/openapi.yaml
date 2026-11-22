@@ -226,6 +226,125 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
+  /api/beneficiaries/:
+    get:
+      operationId: beneficiaries_list
+      description: List beneficiaries, or add one. Adding emails a 6-digit OTP; it
+        stays PENDING until confirmed.
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - beneficiaries
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBeneficiaryList'
+          description: ''
+    post:
+      operationId: beneficiaries_create
+      description: List beneficiaries, or add one. Adding emails a 6-digit OTP; it
+        stays PENDING until confirmed.
+      tags:
+      - beneficiaries
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BeneficiaryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BeneficiaryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BeneficiaryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiary'
+          description: ''
+  /api/beneficiaries/{id}/:
+    get:
+      operationId: beneficiaries_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - beneficiaries
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiary'
+          description: ''
+    delete:
+      operationId: beneficiaries_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - beneficiaries
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/beneficiaries/{id}/confirm/:
+    post:
+      operationId: beneficiaries_confirm_create
+      description: Confirm a new beneficiary with the emailed code. Three wrong codes
+        lock it.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - beneficiaries
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConfirmRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConfirmRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Beneficiary'
+          description: ''
   /api/health/:
     get:
       operationId: health_retrieve
@@ -242,6 +361,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Health'
+          description: ''
+  /api/transfers/:
+    get:
+      operationId: transfers_list
+      description: Your transfers, newest first. POST sends money.
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - transfers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTransferList'
+          description: ''
+    post:
+      operationId: transfers_create
+      description: Your transfers, newest first. POST sends money.
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: A unique value per transfer (e.g. a UUID). A retry with the same
+          key never pays twice.
+        required: true
+      tags:
+      - transfers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransferRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransferRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+          description: ''
+  /api/transfers/{id}/:
+    get:
+      operationId: transfers_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - transfers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
           description: ''
 components:
   schemas:
@@ -277,7 +472,7 @@ components:
           readOnly: true
         status:
           allOf:
-          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/AccountStatusEnum'
           readOnly: true
         opened_at:
           type: string
@@ -294,6 +489,80 @@ components:
       - status
       - type
       - type_label
+    AccountStatusEnum:
+      enum:
+      - ACTIVE
+      - FROZEN
+      type: string
+      description: |-
+        * `ACTIVE` - Active
+        * `FROZEN` - Frozen
+    Beneficiary:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 140
+        iban:
+          type: string
+          maxLength: 34
+        iban_display:
+          type: string
+          readOnly: true
+        nickname:
+          type: string
+          maxLength: 40
+        status:
+          allOf:
+          - $ref: '#/components/schemas/BeneficiaryStatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - activated_at
+      - created_at
+      - iban
+      - iban_display
+      - id
+      - name
+      - status
+    BeneficiaryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 140
+        iban:
+          type: string
+          minLength: 1
+          maxLength: 34
+        nickname:
+          type: string
+          maxLength: 40
+      required:
+      - iban
+      - name
+    BeneficiaryStatusEnum:
+      enum:
+      - PENDING
+      - ACTIVE
+      - LOCKED
+      type: string
+      description: |-
+        * `PENDING` - Pending
+        * `ACTIVE` - Active
+        * `LOCKED` - Locked
     CategoryEnum:
       enum:
       - SALARY
@@ -314,6 +583,15 @@ components:
         * `ATM` - Atm
         * `FEE` - Fee
         * `INTEREST` - Interest
+    ConfirmRequest:
+      type: object
+      properties:
+        otp:
+          type: string
+          minLength: 1
+          pattern: ^\d{6}$
+      required:
+      - otp
     DirectionEnum:
       enum:
       - CREDIT
@@ -332,6 +610,16 @@ components:
       required:
       - database
       - status
+    KindEnum:
+      enum:
+      - OWN
+      - INTERNAL
+      - LOCAL
+      type: string
+      description: |-
+        * `OWN` - Own
+        * `INTERNAL` - Internal
+        * `LOCAL` - Local
     PaginatedAccountList:
       type: object
       required:
@@ -355,6 +643,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Account'
+    PaginatedBeneficiaryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Beneficiary'
     PaginatedTransactionList:
       type: object
       required:
@@ -378,6 +689,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Transaction'
+    PaginatedTransferList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transfer'
     RegisterRequest:
       type: object
       properties:
@@ -398,14 +732,6 @@ components:
       - email
       - full_name
       - password
-    StatusEnum:
-      enum:
-      - ACTIVE
-      - FROZEN
-      type: string
-      description: |-
-        * `ACTIVE` - Active
-        * `FROZEN` - Frozen
     TokenObtainPair:
       type: object
       properties:
@@ -498,6 +824,103 @@ components:
       - direction
       - id
       - reference
+    Transfer:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        reference:
+          type: string
+          readOnly: true
+        uetr:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/TransferStatusEnum'
+          readOnly: true
+        from_account:
+          type: integer
+          readOnly: true
+        to_account:
+          type: integer
+          readOnly: true
+          nullable: true
+        beneficiary:
+          type: integer
+          readOnly: true
+          nullable: true
+        creditor_name:
+          type: string
+          readOnly: true
+        creditor_iban:
+          type: string
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        remarks:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - beneficiary
+      - created_at
+      - creditor_iban
+      - creditor_name
+      - currency
+      - from_account
+      - id
+      - kind
+      - reference
+      - remarks
+      - status
+      - to_account
+      - uetr
+    TransferRequestRequest:
+      type: object
+      properties:
+        from_account:
+          type: integer
+        to_account:
+          type: integer
+          description: One of your own accounts
+        beneficiary:
+          type: integer
+          description: A confirmed beneficiary
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        remarks:
+          type: string
+          maxLength: 140
+      required:
+      - amount
+      - from_account
+    TransferStatusEnum:
+      enum:
+      - COMPLETED
+      - PENDING
+      type: string
+      description: |-
+        * `COMPLETED` - Completed
+        * `PENDING` - Pending
     TypeEnum:
       enum:
       - CURRENT

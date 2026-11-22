@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "users",
     "core",
     "banking",
+    "payments",
 ]
 
 MIDDLEWARE = [
@@ -110,3 +111,19 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
     "COMPONENT_SPLIT_REQUEST": True,
 }
+
+# Ledgerly Bank's published limits (data/policies in the Ask Ledgerly chatbot say the same).
+LEDGERLY = {
+    "DAILY_LIMIT": os.getenv("LEDGERLY_DAILY_LIMIT", "50000.00"),
+    "NEW_BENEFICIARY_LIMIT": "10000.00",
+    "NEW_BENEFICIARY_HOURS": 24,
+    "MAX_BENEFICIARIES": 100,
+    "OTP_MINUTES": 5,
+    "OTP_MAX_ATTEMPTS": 3,
+}
+
+# OTP emails: printed to the console in development; MailHog in Docker; an in-memory outbox in tests.
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "1025"))
+DEFAULT_FROM_EMAIL = "Ledgerly Bank <no-reply@ledgerly.example>"
