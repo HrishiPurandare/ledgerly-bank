@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ledgerly
+          POSTGRES_PASSWORD: ledgerly
+          POSTGRES_DB: ledgerly
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ledgerly" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DJANGO_SECRET_KEY: ci-only-signing-key-that-is-long-enough
+      DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgres://ledgerly:ledgerly@localhost:5432/ledgerly' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        if: matrix.database == 'sqlite'
+        run: ruff check . && ruff format --check .
+      - name: No missing migrations
+        run: python manage.py makemigrations --check --dry-run
+      - name: OpenAPI schema is valid and committed
+        if: matrix.database == 'sqlite'
+        run: |
+          python manage.py spectacular --validate --fail-on-warn --file /tmp/openapi.yaml
+          diff -u openapi.yaml /tmp/openapi.yaml || {
+            echo "::error::openapi.yaml is out of date. Run: python manage.py spectacular --file openapi.yaml"; exit 1; }
+      - name: Tests
+        run: pytest -q
