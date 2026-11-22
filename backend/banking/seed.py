@@ -172,9 +172,21 @@ def seed(*, seed_value: int = 42, today: date | None = None, days: int = 90) -> 
     return summary
 
 
+@db_transaction.atomic
 def reset() -> None:
-    """Remove the demo customers and everything they own (only theirs)."""
+    """Remove the demo customers and everything they own (only theirs).
+
+    Order matters: transfers protect their transactions and accounts, so they go first.
+    """
+    from django.db.models import Q
+
+    from payments.models import Beneficiary, Transfer
+
     emails = [c.email for c in CUSTOMERS]
+    Transfer.objects.filter(
+        Q(owner__email__in=emails) | Q(to_account__owner__email__in=emails)  # incl. payments TO demo accounts
+    ).delete()
+    Beneficiary.objects.filter(owner__email__in=emails).delete()
     Transaction.objects.filter(account__owner__email__in=emails).delete()
     Account.objects.filter(owner__email__in=emails).delete()
     get_user_model().objects.filter(email__in=emails).delete()

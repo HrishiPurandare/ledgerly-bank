@@ -96,3 +96,28 @@ def test_reset_only_removes_demo_customers(db, settings, make_user, make_account
     call_command("seed", "--today", "2026-11-22")
     call_command("seed", "--reset", "--today", "2026-11-22")
     assert Account.objects.filter(pk=real.pk).exists()
+
+
+def test_reset_works_after_demo_customers_have_made_transfers(db, settings):
+    """Regression: transfers protect their transactions, so reset crashed with ProtectedError."""
+    from django.utils import timezone
+
+    from payments.models import Beneficiary
+    from payments.services import create_transfer
+
+    settings.DEBUG = True
+    call_command("seed", "--today", "2026-11-22")
+    sara = Account.objects.get(owner__email="sara@example.com", type="CURRENT")
+    omar = Account.objects.get(owner__email="omar@example.com")
+    payee = Beneficiary.objects.create(
+        owner=sara.owner, name="Omar Ali", iban=omar.iban, status="ACTIVE", activated_at=timezone.now()
+    )
+    create_transfer(
+        sara.owner,
+        {"from_account": sara.id, "beneficiary": payee.id, "amount": Decimal("100.00")},
+        idempotency_key="before-reset",
+        now=timezone.now(),
+    )
+    call_command("seed", "--reset", "--today", "2026-11-22")
+    assert Account.objects.count() == sum(len(c.accounts) for c in CUSTOMERS)
+    assert not Beneficiary.objects.exists()
