@@ -178,6 +178,8 @@ def test_the_daily_limit_spans_all_accounts(auth_api, current, savings, make_ben
     send(auth_api, from_account=current.id, beneficiary=beneficiary.id, amount="46000.00")
     response = send(auth_api, from_account=savings.id, beneficiary=beneficiary.id, amount="4000.01")
     assert code(response) == "daily_limit_exceeded"
+    # Amounts in messages are written the way the app shows money: grouped, two decimals.
+    assert "You can send AED 4,000.00 more today." in response.json()["detail"]
 
 
 def test_moving_money_between_own_accounts_does_not_use_the_limit(
@@ -257,7 +259,11 @@ def test_new_beneficiary_limit_is_cumulative(auth_api, current, make_beneficiary
     new = make_beneficiary(hours_ago=1)
     send(auth_api, from_account=current.id, beneficiary=new.id, amount="6000.00")
     response = send(auth_api, from_account=current.id, beneficiary=new.id, amount="4000.01")
-    assert code(response) == "new_beneficiary_limit" and "AED 4000.00 more" in response.json()["detail"]
+    assert code(response) == "new_beneficiary_limit"
+    assert response.json()["detail"] == (
+        "New beneficiaries are limited to AED 10,000.00 for 24 hours. "
+        "You can send AED 4,000.00 more until then."
+    )
 
 
 def test_after_24_hours_the_new_beneficiary_limit_no_longer_applies(auth_api, current, make_beneficiary):

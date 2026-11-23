@@ -149,15 +149,15 @@ def _execute(user, data: dict, key: str, request_hash: str, now: datetime) -> Tr
         if amount > remaining:
             raise TransferRejected(
                 "daily_limit_exceeded",
-                f"This would exceed your daily limit. You can send AED {remaining} more today.",
+                f"This would exceed your daily limit. You can send AED {remaining:,.2f} more today.",
             )
     if beneficiary and rules.in_cooling_off(beneficiary, now):
         remaining = rules.new_beneficiary_limit() - rules.sent_to_new_beneficiary(beneficiary)
         if amount > remaining:
             raise TransferRejected(
                 "new_beneficiary_limit",
-                f"New beneficiaries are limited to AED {rules.new_beneficiary_limit()} for 24 hours. "
-                f"You can send AED {max(remaining, Decimal('0'))} more until then.",
+                f"New beneficiaries are limited to AED {rules.new_beneficiary_limit():,.2f} for 24 hours. "
+                f"You can send AED {max(remaining, Decimal('0')):,.2f} more until then.",
             )
 
     reference = f"TRF{now:%y%m%d}{secrets.token_hex(4).upper()}"
