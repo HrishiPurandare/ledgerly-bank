@@ -1,0 +1,210 @@
+<main class="card wide">
+  <a routerLink="/accounts" class="back" data-testid="back-to-accounts">← All accounts</a>
+
+  @switch (accountState().kind) {
+    @case ('not-found') {
+      <h1>Account not found</h1>
+      <p data-testid="statement-not-found">
+        This account doesn't exist or isn't yours. Pick one from your accounts.
+      </p>
+    }
+    @default {
+      @if (account(); as account) {
+        <header class="statement-head" data-testid="statement-header">
+          <div>
+            <h1 data-testid="statement-account-name">
+              {{ account.nickname || account.type_label }}
+            </h1>
+            <span class="muted">{{ account.type_label }}</span>
+            <code data-testid="statement-iban">{{ account.iban_display }}</code>
+          </div>
+          <div class="right">
+            <span class="muted">Available balance</span>
+            <span class="balance big" data-testid="statement-balance">{{
+              account.balance | money: account.currency
+            }}</span>
+            @if (account.status === 'FROZEN') {
+              <span class="badge" data-testid="statement-frozen">Frozen</span>
+            }
+          </div>
+        </header>
+      } @else {
+        <h1>Statement</h1>
+        @if (accountState().kind === 'error') {
+          <p class="error" role="alert" data-testid="account-error">
+            We couldn't load this account's details.
+          </p>
+        }
+      }
+
+      <form
+        class="filters"
+        [formGroup]="form"
+        (ngSubmit)="applyFilters()"
+        novalidate
+        data-testid="filters"
+      >
+        <!-- Separate <label for>: a label wrapped around a <select> would also read out the selected option. -->
+        <div class="field">
+          <label for="f-direction">Type</label>
+          <select id="f-direction" formControlName="direction" data-testid="filter-direction">
+            <option value="">All</option>
+            <option value="CREDIT">Money in</option>
+            <option value="DEBIT">Money out</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-category">Category</label>
+          <select id="f-category" formControlName="category" data-testid="filter-category">
+            <option value="">All</option>
+            @for (c of categories; track c[0]) {
+              <option [value]="c[0]">{{ c[1] }}</option>
+            }
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-from">From</label>
+          <input id="f-from" type="date" formControlName="date_from" data-testid="filter-from" />
+        </div>
+        <div class="field">
+          <label for="f-to">To</label>
+          <input id="f-to" type="date" formControlName="date_to" data-testid="filter-to" />
+        </div>
+        <div class="field grow">
+          <label for="f-search">Search</label>
+          <input
+            id="f-search"
+            type="search"
+            formControlName="search"
+            maxlength="100"
+            placeholder="Merchant or description"
+            data-testid="filter-search"
+          />
+        </div>
+        <div class="filter-actions">
+          <button type="submit" data-testid="filter-apply">Apply</button>
+          @if (filtered()) {
+            <button
+              type="button"
+              class="secondary"
+              (click)="clearFilters()"
+              data-testid="filter-clear"
+            >
+              Clear
+            </button>
+          }
+        </div>
+      </form>
+      @if (filterError()) {
+        <p class="error" role="alert" data-testid="filter-error">{{ filterError() }}</p>
+      }
+
+      @switch (pageState().kind) {
+        @case ('loading') {
+          <p data-testid="statement-loading">Loading transactions…</p>
+        }
+        @case ('error') {
+          <p class="error" role="alert" data-testid="statement-error">
+            We couldn't load the transactions.
+          </p>
+          <button type="button" (click)="retry()" data-testid="statement-retry">Try again</button>
+        }
+        @case ('no-such-page') {
+          <p data-testid="statement-no-such-page">
+            That page doesn't exist.
+            <button
+              type="button"
+              class="link-button"
+              (click)="goToPage(1)"
+              data-testid="first-page"
+            >
+              Go to the first page
+            </button>
+          </p>
+        }
+        @case ('not-found') {
+          <p data-testid="statement-not-found">This account doesn't exist or isn't yours.</p>
+        }
+        @case ('bad-filter') {
+          <p class="error" role="alert" data-testid="statement-bad-filter">{{ badFilter() }}</p>
+        }
+        @case ('ready') {
+          @if (results(); as page) {
+            @if (page.results.length === 0) {
+              <p data-testid="statement-empty">
+                @if (filtered()) {
+                  No transactions match these filters.
+                } @else {
+                  No transactions yet.
+                }
+              </p>
+            } @else {
+              <table class="statement" data-testid="statement-table">
+                <caption class="muted" data-testid="statement-count">
+                  {{
+                    page.count
+                  }}
+                  transactions · Dubai time
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">Description</th>
+                    <th scope="col" class="num">Amount</th>
+                    <th scope="col" class="num">Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (tx of page.results; track tx.id) {
+                    <tr
+                      data-test-role="transaction"
+                      [attr.data-testid]="'tx-' + tx.reference"
+                      [class.credit]="tx.direction === 'CREDIT'"
+                    >
+                      <td data-testid="tx-date">
+                        {{ tx.created_at | date: 'd MMM y, HH:mm' : '+0400' }}
+                      </td>
+                      <td>
+                        <span data-testid="tx-description">{{ tx.description }}</span>
+                        <span class="muted small" data-testid="tx-category">{{
+                          categoryLabel[tx.category]
+                        }}</span>
+                      </td>
+                      <td class="num" data-testid="tx-amount">
+                        {{ (tx.direction === 'DEBIT' ? '-' + tx.amount : tx.amount) | money }}
+                      </td>
+                      <td class="num muted" data-testid="tx-balance">
+                        {{ tx.balance_after | money }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              <nav class="pager" aria-label="Statement pages" data-testid="pager">
+                <button
+                  type="button"
+                  class="secondary"
+                  [disabled]="!page.previous"
+                  (click)="goToPage(query().page - 1)"
+                  data-testid="page-prev"
+                >
+                  Previous
+                </button>
+                <span data-testid="page-info">Page {{ query().page }} of {{ totalPages() }}</span>
+                <button
+                  type="button"
+                  class="secondary"
+                  [disabled]="!page.next"
+                  (click)="goToPage(query().page + 1)"
+                  data-testid="page-next"
+                >
+                  Next
+                </button>
+              </nav>
+            }
+          }
+        }
+      }
+    }
+  }
+</main>

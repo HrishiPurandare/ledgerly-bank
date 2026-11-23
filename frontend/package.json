@@ -5,8 +5,8 @@
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
-    "test": "ng test --watch=false",
-    "test:watch": "ng test",
+    "test": "TZ=UTC ng test --watch=false",
+    "test:watch": "TZ=UTC ng test",
     "format:check": "prettier --check \"src/**/*.{ts,html,css}\""
   },
   "private": true,

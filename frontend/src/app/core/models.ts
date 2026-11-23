@@ -31,3 +31,30 @@ export interface Page<T> {
   previous: string | null;
   results: T[];
 }
+
+export type Direction = 'CREDIT' | 'DEBIT';
+
+export const CATEGORIES = {
+  SALARY: 'Salary',
+  TRANSFER_IN: 'Transfer in',
+  TRANSFER_OUT: 'Transfer out',
+  CARD: 'Card purchase',
+  BILL: 'Bill payment',
+  ATM: 'ATM withdrawal',
+  FEE: 'Fee',
+  INTEREST: 'Interest',
+} as const;
+
+export type Category = keyof typeof CATEGORIES;
+
+export interface Transaction {
+  id: number;
+  reference: string;
+  direction: Direction;
+  category: Category;
+  amount: string;
+  balance_after: string;
+  description: string;
+  counterparty: string;
+  created_at: string;
+}

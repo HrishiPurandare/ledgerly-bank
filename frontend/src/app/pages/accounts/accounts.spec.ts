@@ -1,9 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 
 import { Account } from '../../core/models';
-import { Accounts } from './accounts';
+import { Accounts, totalsByCurrency } from './accounts';
 
 const account = (overrides: Partial<Account>): Account => ({
   id: 1,
@@ -28,7 +29,7 @@ describe('Accounts page', () => {
   beforeEach(async () => {
     TestBed.configureTestingModule({
       imports: [Accounts],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(Accounts);
@@ -90,5 +91,31 @@ describe('Accounts page', () => {
     fixture.nativeElement.querySelector('[data-testid="accounts-retry"]').click();
     await respond([account({})]);
     expect(text('account-balance')).toBe('AED 32,079.82');
+  });
+
+  it('shows the exact total and links each account to its statement', async () => {
+    await respond([
+      account({ balance: '0.10' }),
+      account({ id: 2, balance: '0.20' }), // as floats: 0.30000000000000004
+      account({ id: 3, balance: '18240.15', status: 'FROZEN' }), // frozen money is still yours
+    ]);
+    expect(text('total-amount')).toBe('AED 18,240.45');
+    expect(text('total-AED')).toContain('3 accounts');
+    const link = fixture.nativeElement.querySelector(
+      '[data-testid="account-2"] [data-testid="account-name"]',
+    );
+    expect(link.getAttribute('href')).toBe('/accounts/2');
+  });
+});
+
+describe('totalsByCurrency', () => {
+  it('never adds different currencies together', () => {
+    const aed = account({ balance: '100.00' });
+    const usd = account({ id: 2, currency: 'USD', balance: '50.00' });
+    expect(totalsByCurrency([aed, usd, aed])).toEqual([
+      { currency: 'AED', amount: '200.00', accounts: 2 },
+      { currency: 'USD', amount: '50.00', accounts: 1 },
+    ]);
+    expect(totalsByCurrency([])).toEqual([]);
   });
 });

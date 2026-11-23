@@ -115,3 +115,161 @@ code {
   font-size: 0.85rem;
   color: var(--muted);
 }
+.card.wide {
+  max-width: 980px;
+}
+.account-link {
+  color: var(--brand);
+  font-weight: 700;
+  text-decoration: none;
+}
+.account-link:hover,
+.account-link:focus-visible {
+  text-decoration: underline;
+}
+.totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  border-radius: 10px;
+  background: #eef6f9;
+}
+.total {
+  display: flex;
+  flex-direction: column;
+}
+.balance.big {
+  font-size: 1.6rem;
+}
+.back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--brand);
+  text-decoration: none;
+}
+.statement-head {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.statement-head div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.statement-head .right {
+  align-items: flex-end;
+}
+.statement-head h1 {
+  margin: 0;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.filters label {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.filters .field {
+  display: flex;
+  flex-direction: column;
+}
+.filters .grow {
+  flex: 1 1 180px;
+}
+.filters input,
+.filters select {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+.filter-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.filter-actions button {
+  margin-top: 0;
+}
+button.secondary {
+  background: #fff;
+  color: var(--brand);
+  border: 1px solid var(--border);
+}
+.link-button {
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: var(--brand);
+  text-decoration: underline;
+}
+.statement {
+  width: 100%;
+  border-collapse: collapse;
+}
+.statement caption {
+  text-align: left;
+  padding-bottom: 0.5rem;
+}
+.statement th,
+.statement td {
+  padding: 0.55rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.statement th {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.statement td span {
+  display: block;
+}
+.statement .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.statement tr.credit td[data-testid='tx-amount'] {
+  color: #067647;
+  font-weight: 600;
+}
+.small {
+  font-size: 0.8rem;
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+}
+.pager button {
+  margin-top: 0;
+}
+@media (max-width: 640px) {
+  .card {
+    margin: 1rem;
+    padding: 1rem;
+  }
+  .statement-head .right {
+    align-items: flex-start;
+  }
+  .statement th:nth-child(4),
+  .statement td:nth-child(4) {
+    display: none;
+  }
+}

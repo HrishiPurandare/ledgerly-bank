@@ -13,6 +13,16 @@
       @if (accounts().length === 0) {
         <p data-testid="accounts-empty">You don't have any accounts yet.</p>
       } @else {
+        <section class="totals" data-testid="totals">
+          @for (total of totals(); track total.currency) {
+            <div class="total" [attr.data-testid]="'total-' + total.currency">
+              <span class="muted">Total balance ({{ total.accounts }} accounts)</span>
+              <span class="balance big" data-testid="total-amount">{{
+                total.amount | money: total.currency
+              }}</span>
+            </div>
+          }
+        </section>
         <ul class="accounts" data-testid="accounts-list">
           @for (account of accounts(); track account.id) {
             <li
@@ -22,9 +32,12 @@
               data-test-role="account"
             >
               <div>
-                <strong data-testid="account-name">{{
-                  account.nickname || account.type_label
-                }}</strong>
+                <a
+                  [routerLink]="['/accounts', account.id]"
+                  class="account-link"
+                  data-testid="account-name"
+                  >{{ account.nickname || account.type_label }}</a
+                >
                 <span class="muted" data-testid="account-type">{{ account.type_label }}</span>
                 <code data-testid="account-iban">{{ account.iban_display }}</code>
               </div>

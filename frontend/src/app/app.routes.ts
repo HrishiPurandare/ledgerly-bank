@@ -16,5 +16,11 @@ export const routes: Routes = [
     title: 'Accounts · Ledgerly Bank',
     loadComponent: () => import('./pages/accounts/accounts').then((m) => m.Accounts),
   },
+  {
+    path: 'accounts/:id',
+    canActivate: [authGuard],
+    title: 'Statement · Ledgerly Bank',
+    loadComponent: () => import('./pages/statement/statement').then((m) => m.Statement),
+  },
   { path: '**', redirectTo: 'accounts' },
 ];
