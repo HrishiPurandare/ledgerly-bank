@@ -745,3 +745,132 @@ cd frontend && npm test
 13. The first API call after minute 15 gets 401; the interceptor refreshes with the stored refresh token (valid for 1 day) and retries, so the test continues. One catch: rotation stores a *new* refresh token in that browser context only, so parallel workers that share the same saved state can invalidate each other's refresh token. That's a real issue P-02 will have to handle, e.g. a fresh login per worker.
 
 </details>
+
+---
+
+# Part 6: Dashboard and statement screens (Forge90 day 15)
+
+The first screens with real data on them: a dashboard with an exact total, and a statement with filters, pagination and a running balance. These are the pages P-02 (Playwright) will test most, and they're full of classic UI-test traps: time zones, stale responses, URLs as input, and labels.
+
+Budget: one 2-hour session plus the quiz.
+
+## 41. Key concepts
+
+**The URL is the source of truth for the filters.** `/accounts/7?direction=DEBIT&search=coffee` can be bookmarked, shared, reloaded, and the browser's Back button undoes a filter. The router binds each query parameter to a component input (`withComponentInputBinding`), and the form only *shows* what the URL says. "Apply" doesn't fetch anything; it changes the URL, and the URL change causes the fetch.
+
+**But the URL is user input.** Anyone can type `?page=-1&direction=SIDEWAYS`. `parseQuery()` keeps only valid values (positive whole page numbers, known directions and categories, `YYYY-MM-DD` dates, search up to 100 characters) and drops the rest before anything reaches the API.
+
+**Stale responses: `switchMap`.** If the user changes filters faster than the API answers, two requests are in flight. Without care, the slower, *older* response can arrive last and overwrite the newer one: the screen says "Salary" but shows card purchases. `switchMap` unsubscribes from the previous request when a new one starts (Angular then cancels it), so only the latest answer can ever be shown. A test proves it: it checks `request.cancelled`.
+
+**Two kinds of 404.** DRF answers 404 both for someone else's account and for a page past the end (`?page=99` → `"Invalid page."`). The page tells them apart: a 404 on the account means "not found or not yours" (no hint whether it exists, Part 2); a 404 on page > 1 means "that page doesn't exist", with a link to page 1.
+
+**Exact totals.** `0.1 + 0.2` in JavaScript is `0.30000000000000004`. The dashboard total converts each balance string to whole cents as a `BigInt`, adds, and converts back (`shared/money.ts`). Totals are per currency: adding AED to USD gives a meaningless number.
+
+**Dubai time, whatever the computer's time zone.** Dates use `date: 'd MMM y, HH:mm' : '+0400'`. A transaction at `23:30Z` on 20 Nov is shown as `21 Nov, 03:30`, because the bank's day is Dubai's day (the daily limit in Part 3 uses the same rule).
+
+**Labels for people and for tests.** A `<label>` wrapped around a `<select>` makes the control's accessible name "Type All": the label text plus the selected option. Separate `<label for="f-direction">` elements give exactly "Type". That's what a screen reader announces, and what Playwright's `getByLabel('Type', { exact: true })` (P-02) will match.
+
+**New test ids:** `total-amount`, `total-AED`; statement: `statement-header`, `statement-balance`, `filter-direction` / `-category` / `-from` / `-to` / `-search`, `filter-apply`, `filter-clear`, `filter-error`, rows with `data-test-role="transaction"` and `data-testid="tx-<reference>"` (each row has `tx-date`, `tx-description`, `tx-category`, `tx-amount`, `tx-balance`), `page-prev`, `page-next`, `page-info`, and one id per state (`statement-loading`, `-error`, `-empty`, `-not-found`, `-no-such-page`, `-bad-filter`).
+
+## 42. How it's tested (94 Vitest tests)
+
+- **`RouterTestingHarness`** opens the page through the real router, with a real URL, so the tests cover the URL → input → request chain and can assert `router.url` after clicking Apply or Next.
+- The key tests: filters from the URL reach the API; junk in the URL never does; Apply resets to page 1 and doesn't refetch the account header; reversed dates are refused without a request; a slow old response is cancelled; pagination keeps the filters; both 404s; a 400 shows the API's message; retry after a 500; labels name each control exactly.
+- **Tests run in UTC** (`TZ=UTC` in `package.json`), and `tz.spec.ts` fails if they don't.
+- **Mutation check, 6 of 6 caught, after two fixes:** `switchMap` → `mergeMap`; dates without `+0400`; `in` instead of `Object.hasOwn`; no From/To check; filters keeping the old page; totals added as floats. The first run **missed two**:
+  - *The time zone.* This Mac is set to Dubai (+04), so dates looked right without `'+0400'`. CI (UTC) would have caught it, but only after a push. Fixed by pinning the tests to UTC.
+  - *The float total.* `toFixed(2)` rounds normal-sized float errors away, and the one big-number case passed by luck (round-half-to-even landed on the right answer). Added `9007199254740993.01` alone: as a float it becomes `...992.00`.
+- **Manual check against the real API** (Sara): total 28,910.53 + 14,632.63 = 43,543.16; running balances consistent row to row; filters from the URL; page 2 of 5; `?page=99` → "That page doesn't exist"; Omar's account → "Account not found"; reversed dates refused; no horizontal scroll at 375 px wide.
+
+## 43. Bugs found while building
+
+1. **`'toString' in CATEGORIES` is `true`.** The `in` operator also looks at inherited properties, so `?category=toString` passed validation and would have been sent to the API. A test written for exactly this case caught it; `Object.hasOwn` fixed it.
+2. **Wrapped labels gave the filters the wrong names** ("Type All"). Found while reading the page's accessibility tree in the browser. Fixed with `<label for>`; a test now checks each control's label text is exactly its name.
+3. **The browser tool's `form_input` didn't fire Angular's `input` event** on date fields, so the reversed-date error didn't show during the manual check. Dispatching a real `input` event showed it working. This was a tool artifact, not an app bug; checking it rather than assuming took one minute.
+4. **The first mutation run missed two sabotages** (time zone, float total). See §42.
+
+## 44. Run it
+
+```bash
+cd backend && python manage.py runserver
+```
+
+```bash
+cd frontend && npm start
+```
+
+Log in as `sara@example.com` and:
+- [ ] Add up the two account balances yourself. Does the total match to the fils?
+- [ ] Open Everyday. Check three rows: does each balance equal the row below plus this row's amount (for money out)?
+- [ ] Filter "Money out" + search "coffee". Copy the URL into a new tab. Same result?
+- [ ] Press the browser's Back button. What happens to the filters?
+- [ ] Try `?page=99`, `?page=-1`, `?category=toString`, and `/accounts/9`. What does each show, and what request does each send (DevTools → Network)?
+- [ ] Make the window narrow (DevTools device toolbar). Which column disappears?
+
+## 45. Read it, in this order
+
+| # | File | What to understand |
+|---|---|---|
+| 1 | `shared/money.ts` + spec | Cents as `BigInt`; why the big-number test is the one that matters. |
+| 2 | `pages/accounts/accounts.ts` | `totalsByCurrency`, `computed()`. |
+| 3 | `pages/statement/statement.ts`: `parseQuery`, `toParams` | Treating the URL as input. |
+| 4 | Same file, the constructor | `toObservable` + `switchMap`; why the header and the list are separate streams. |
+| 5 | `statement.html` | States, test ids, `<label for>`, the date pipe's time zone. |
+| 6 | `statement.spec.ts` | `RouterTestingHarness`, `request.cancelled`, `router.url`. |
+
+## 46. Break it
+
+1. [ ] Replace `switchMap` with `mergeMap` in the transactions stream. Which test fails, and what would a user see on a slow network?
+2. [ ] Remove `: '+0400'` from the date pipe and run `npm test`. Then run `npx ng test --watch=false` (no `TZ=UTC`). Explain the difference.
+3. [ ] Put the `<label>` back around the Type `<select>`. Which test fails? What would `page.getByLabel('Type', { exact: true })` find?
+4. [ ] In `applyFilters`, keep the current page instead of starting at page 1. Describe the bug a user hits on page 4 who filters down to 3 results.
+
+## 47. Explain it
+
+1. Why is the URL, not the form, the source of truth for filters?
+2. What's a stale response, and how does `switchMap` prevent it?
+3. Why can't the dashboard add balances with `Number()`?
+4. Why are the tests pinned to UTC when the bank is in Dubai?
+5. How does the page tell "not your account" from "page past the end", when both are 404?
+6. Why does a wrapped label hurt both accessibility and test locators?
+
+## 48. Quiz (tonight)
+
+**Part A: concepts (1 point each)**
+
+1. What does `withComponentInputBinding` do on the statement page?
+2. Name four things `parseQuery` refuses.
+3. Why does the dashboard show one total per currency?
+4. What does `Object.hasOwn(obj, key)` check that `key in obj` doesn't?
+5. Which `data-testid` would you wait for to know the statement finished loading with results?
+
+**Part B: read the code (2 points each)**
+
+6. Why are the account header and the transaction list loaded by two separate streams?
+7. What does bumping `attempt` do, and why is it part of the `request` computed?
+8. In `toParams`, why is page 1 left out of the URL?
+9. In the stale-response test, what does `slow.cancelled` prove?
+
+**Part C: predict, then run (3 points each)**
+
+10. The user is on `?direction=DEBIT&page=3` and clicks Apply after choosing "Card purchase". What's the new URL, and how many HTTP requests are sent?
+11. On a Mac set to Dubai, someone removes `'+0400'` and runs `npx ng test --watch=false` without `TZ=UTC`. Do the tests pass? What happens in CI?
+12. A Playwright test types "coffee" in Search, clicks Apply, then immediately asserts the row count. The API takes 2 seconds. What does the test see, and what should it wait for instead?
+
+<details>
+<summary>Answers</summary>
+
+1. The router passes the `:id` path parameter and each query parameter (`page`, `direction`, ...) into the component's inputs, so the component reads them as signals.
+2. Any four of: page 0, negative, decimal or non-numeric; unknown direction; unknown or inherited category (`toString`); dates not in `YYYY-MM-DD`; search over 100 characters (cut to 100).
+3. Adding amounts in different currencies gives a meaningless number; AED 100 + USD 50 is not 150 of anything.
+4. Only the object's own properties; `in` also finds inherited ones like `toString`.
+5. `statement-table` (or `statement-count`, or rows with `data-test-role="transaction"`); `statement-empty` if no results.
+6. The header depends only on the account id; the list depends on the id and the filters. Separate streams mean changing a filter doesn't refetch the header.
+7. It makes the `request` computed produce a new value even though the id and filters are the same, so `toObservable` emits and `switchMap` fetches again ("Try again").
+8. Page 1 is the default, so `?page=1` would make two URLs for the same view and add noise to bookmarks.
+9. That `switchMap` unsubscribed from the first request when the URL changed, so its response can never reach the screen.
+10. `/accounts/7?direction=DEBIT&category=CARD`. One request (transactions with `direction=DEBIT&category=CARD`, no page); the account header isn't refetched.
+11. Locally they pass: the machine's zone is +04 already. In CI (UTC) the Dubai-time test fails. With `TZ=UTC` (and `tz.spec.ts`), it fails locally too, before the push.
+12. It may still see the old rows (or the loading state) and fail, or pass by luck. It should wait for the result: e.g. `expect(page.getByTestId('statement-count')).toHaveText(/13 transactions/)` or the URL plus `statement-table`, using Playwright's auto-retrying assertions, never a fixed sleep.
+
+</details>

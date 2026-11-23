@@ -9,6 +9,8 @@ A small, realistic banking app built **to be tested**. It's the shared system un
 
 Ledgerly Bank is fictional. All customers, accounts and money are invented test data.
 
+![Statement screen: filters, running balance, Dubai time](docs/statement.jpg)
+
 ## What's in it
 
 | Area | Status |
@@ -19,8 +21,9 @@ Ledgerly Bank is fictional. All customers, accounts and money are invented test 
 | Accounts and statements (filters, pagination), owner-only access, deterministic seed data | ✅ |
 | Beneficiaries (OTP by email) and transfers with the bank's real limit rules, idempotency and row locking | ✅ |
 | ISO 20022 `pacs.008` messages for transfers to other banks (schema-validated, golden-file tested) | ✅ |
-| Angular 21 front end: login, session refresh, route guards, accounts page, `data-testid` everywhere | ✅ (login + accounts) |
-| Dashboard, statements, transfer screens | 🔜 |
+| Angular 21 front end: login, session refresh, route guards, `data-testid` everywhere | ✅ |
+| Dashboard (exact totals) and statements (filters in the URL, pagination, Dubai time) | ✅ |
+| Beneficiary and transfer screens | 🔜 |
 | Docker Compose (Postgres + API + UI) | 🔜 |
 
 ## Quick start
@@ -44,7 +47,7 @@ npm ci && npm start               # http://localhost:4200 (proxies /api to :8000
 
 ```bash
 cd backend && pytest -q           # 155 API tests (+3 concurrency tests on Postgres)
-cd frontend && npm test           # 53 Angular unit tests (Vitest)
+cd frontend && npm test           # 94 Angular unit tests (Vitest, run in UTC)
 ```
 
 CI runs every API test on **SQLite and Postgres 17**, fails on missing migrations, and fails if the committed `openapi.yaml` no longer matches the code (an unreviewed API contract change).
@@ -62,6 +65,8 @@ CI runs every API test on **SQLite and Postgres 17**, fails on missing migration
 - **No user enumeration.** A wrong password and an unknown email get the same 401 response.
 - **Refresh tokens rotate and the old one is blacklisted**, so a stolen, already-used refresh token can't be replayed.
 - **The web app treats the session carefully**: an expired access token is refreshed silently, and requests that fail together share **one** refresh call (verified against the real API). If the refresh fails, the user lands on the login page with a "session expired" message and is sent back to where they were afterwards. `returnUrl` only accepts same-site paths, so the login page can't be used as an open redirect.
+- **The statement's filters live in the URL**, so a filtered statement can be bookmarked, shared and undone with Back. The URL is treated as user input (junk like `?page=-1` or `?category=toString` never reaches the API), and `switchMap` cancels an older request when filters change, so a slow stale response can never overwrite a newer one.
+- **Money on screen is exact**: totals are added in whole cents (`BigInt`), never floats, and per currency. Dates are shown in Dubai time whatever the browser's time zone, and the unit tests run in UTC so a missing time zone fails on every machine, not only in CI.
 - **Django 5.2 LTS**, not the newest 6.x: supported until 2028, and every dependency here is proven on it. Likewise **Angular 21 (LTS until mid-2027)**, because Angular 22 needs Node 22.22+.
 
 ## License
