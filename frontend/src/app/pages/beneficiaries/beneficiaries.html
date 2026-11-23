@@ -1,0 +1,189 @@
+<main class="card">
+  <h1>Beneficiaries</h1>
+
+  @if (notice()) {
+    <p class="notice" role="status" data-testid="beneficiary-notice">{{ notice() }}</p>
+  }
+
+  @switch (state()) {
+    @case ('loading') {
+      <p data-testid="beneficiaries-loading">Loading beneficiaries…</p>
+    }
+    @case ('error') {
+      <p class="error" role="alert" data-testid="beneficiaries-error">
+        We couldn't load your beneficiaries.
+      </p>
+      <button type="button" (click)="load()" data-testid="beneficiaries-retry">Try again</button>
+    }
+    @case ('ready') {
+      @if (beneficiaries().length === 0) {
+        <p data-testid="beneficiaries-empty">No beneficiaries yet. Add one below.</p>
+      } @else {
+        <ul class="accounts" data-testid="beneficiaries-list">
+          @for (b of beneficiaries(); track b.id) {
+            <li
+              class="account"
+              [attr.data-testid]="'beneficiary-' + b.id"
+              data-test-role="beneficiary"
+            >
+              <div>
+                <strong data-testid="beneficiary-name">{{ b.name }}</strong>
+                @if (b.nickname) {
+                  <span class="muted">{{ b.nickname }}</span>
+                }
+                <code data-testid="beneficiary-iban">{{ b.iban_display }}</code>
+              </div>
+              <div class="right">
+                <span
+                  [class]="'status status-' + b.status.toLowerCase()"
+                  data-testid="beneficiary-status"
+                  >{{
+                    b.status === 'ACTIVE'
+                      ? 'Confirmed'
+                      : b.status === 'PENDING'
+                        ? 'Waiting for code'
+                        : 'Locked'
+                  }}</span
+                >
+                <div class="row-actions">
+                  @if (b.status === 'PENDING' && confirmingId() !== b.id) {
+                    <button
+                      type="button"
+                      class="secondary"
+                      (click)="startConfirm(b.id)"
+                      data-testid="beneficiary-enter-code"
+                    >
+                      Enter code
+                    </button>
+                  }
+                  @if (b.status === 'ACTIVE') {
+                    <a
+                      class="button-link"
+                      routerLink="/transfer"
+                      [queryParams]="{ beneficiary: b.id }"
+                      data-testid="beneficiary-send"
+                      >Send money</a
+                    >
+                  }
+                  @if (deletingId() === b.id) {
+                    <span class="confirm-delete" data-testid="beneficiary-delete-confirm">
+                      Remove {{ b.name }}?
+                      <button
+                        type="button"
+                        class="danger"
+                        (click)="delete(b)"
+                        data-testid="beneficiary-delete-yes"
+                      >
+                        Remove
+                      </button>
+                      <button
+                        type="button"
+                        class="secondary"
+                        (click)="deletingId.set(null)"
+                        data-testid="beneficiary-delete-no"
+                      >
+                        Keep
+                      </button>
+                    </span>
+                  } @else {
+                    <button
+                      type="button"
+                      class="secondary"
+                      (click)="askDelete(b.id)"
+                      data-testid="beneficiary-delete"
+                    >
+                      Remove
+                    </button>
+                  }
+                </div>
+              </div>
+            </li>
+            @if (confirmingId() === b.id) {
+              <li class="otp-panel" data-testid="otp-panel">
+                <form
+                  [formGroup]="otpForm"
+                  (ngSubmit)="confirm()"
+                  novalidate
+                  data-testid="otp-form"
+                >
+                  <label for="otp">Code from the email to confirm {{ b.name }}</label>
+                  <input
+                    id="otp"
+                    formControlName="otp"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    maxlength="6"
+                    data-testid="otp-input"
+                  />
+                  @if (otp.touched && otp.invalid) {
+                    <p class="field-error" data-testid="otp-format-error">The code is 6 digits.</p>
+                  }
+                  @if (otpError()) {
+                    <p class="error" role="alert" data-testid="otp-error">{{ otpError() }}</p>
+                  }
+                  <div class="row-actions">
+                    <button type="submit" [disabled]="otpBusy()" data-testid="otp-submit">
+                      {{ otpBusy() ? 'Checking…' : 'Confirm' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="secondary"
+                      (click)="cancelConfirm()"
+                      data-testid="otp-cancel"
+                    >
+                      Later
+                    </button>
+                  </div>
+                </form>
+              </li>
+            }
+          }
+        </ul>
+      }
+    }
+  }
+
+  <section class="add-beneficiary">
+    <h2>Add a beneficiary</h2>
+    <p class="hint">
+      For your security we email you a code to confirm every new beneficiary. For the first 24 hours
+      after confirming, you can send them up to AED 10,000.
+    </p>
+    <form [formGroup]="addForm" (ngSubmit)="add()" novalidate data-testid="add-form">
+      <label for="b-name">Full name</label>
+      <input id="b-name" formControlName="name" maxlength="140" data-testid="add-name" />
+      @if (addForm.controls.name.touched && addForm.controls.name.invalid) {
+        <p class="field-error" data-testid="add-name-error">Enter the beneficiary's name.</p>
+      }
+
+      <label for="b-iban">IBAN</label>
+      <input
+        id="b-iban"
+        formControlName="iban"
+        placeholder="AE07 0331 2345 6789 0123 456"
+        autocomplete="off"
+        spellcheck="false"
+        data-testid="add-iban"
+      />
+      @if (addForm.controls.iban.touched && addForm.controls.iban.value === '') {
+        <p class="field-error" data-testid="add-iban-error">Enter the IBAN.</p>
+      } @else if (ibanInvalid) {
+        <p class="field-error" data-testid="add-iban-error">
+          A UAE IBAN is AE followed by 21 digits.
+        </p>
+      }
+
+      <label for="b-nickname">Nickname (optional)</label>
+      <input id="b-nickname" formControlName="nickname" maxlength="40" data-testid="add-nickname" />
+
+      @if (addError(); as problem) {
+        <p class="error" role="alert" data-testid="add-error">
+          {{ problem.fields['iban'] || problem.fields['name'] || problem.message }}
+        </p>
+      }
+      <button type="submit" [disabled]="adding()" data-testid="add-submit">
+        {{ adding() ? 'Adding…' : 'Add beneficiary' }}
+      </button>
+    </form>
+  </section>
+</main>

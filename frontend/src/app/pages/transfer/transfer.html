@@ -1,0 +1,209 @@
+<main class="card">
+  <h1>Send money</h1>
+
+  @switch (step()) {
+    @case ('loading') {
+      <p data-testid="transfer-loading">Loading your accounts…</p>
+    }
+    @case ('load-error') {
+      <p class="error" role="alert" data-testid="transfer-load-error">
+        We couldn't load your accounts and beneficiaries.
+      </p>
+      <button type="button" (click)="load()" data-testid="transfer-load-retry">Try again</button>
+    }
+    @case ('form') {
+      <form [formGroup]="form" (ngSubmit)="review()" novalidate data-testid="transfer-form">
+        <label for="t-from">From</label>
+        <select id="t-from" formControlName="from_account" data-testid="transfer-from">
+          @for (a of activeAccounts(); track a.id) {
+            <option [ngValue]="a.id">
+              {{ a.nickname || a.type_label }} · {{ a.balance | money: a.currency }}
+            </option>
+          }
+        </select>
+
+        <fieldset class="destination" data-testid="transfer-destination">
+          <legend>To</legend>
+          <label class="inline">
+            <input type="radio" formControlName="destination" value="own" data-testid="dest-own" />
+            One of my accounts
+          </label>
+          <label class="inline">
+            <input
+              type="radio"
+              formControlName="destination"
+              value="beneficiary"
+              data-testid="dest-beneficiary"
+            />
+            A beneficiary
+          </label>
+        </fieldset>
+
+        @if (form.controls.destination.value === 'own') {
+          <label for="t-to">To account</label>
+          @if (toChoices().length) {
+            <select id="t-to" formControlName="to_account" data-testid="transfer-to-account">
+              @for (a of toChoices(); track a.id) {
+                <option [ngValue]="a.id">{{ a.nickname || a.type_label }}</option>
+              }
+            </select>
+          } @else {
+            <p class="hint" data-testid="no-own-accounts">You have no other account to send to.</p>
+          }
+        } @else {
+          <label for="t-beneficiary">Beneficiary</label>
+          @if (activeBeneficiaries().length) {
+            <select
+              id="t-beneficiary"
+              formControlName="beneficiary"
+              data-testid="transfer-beneficiary"
+            >
+              @for (b of activeBeneficiaries(); track b.id) {
+                <option [ngValue]="b.id">{{ b.name }} · {{ b.iban_display }}</option>
+              }
+            </select>
+          } @else {
+            <p class="hint" data-testid="no-beneficiaries">
+              No confirmed beneficiaries yet.
+              <a routerLink="/beneficiaries">Add one</a>.
+            </p>
+          }
+        }
+
+        <label for="t-amount">Amount (AED)</label>
+        <input
+          id="t-amount"
+          formControlName="amount"
+          inputmode="decimal"
+          autocomplete="off"
+          placeholder="0.00"
+          data-testid="transfer-amount"
+        />
+        @if (amountError()) {
+          <p class="field-error" data-testid="transfer-amount-error">{{ amountError() }}</p>
+        }
+
+        <label for="t-remarks">Remarks (optional)</label>
+        <input
+          id="t-remarks"
+          formControlName="remarks"
+          maxlength="140"
+          data-testid="transfer-remarks"
+        />
+
+        @if (problem(); as p) {
+          <p
+            class="error"
+            role="alert"
+            data-testid="transfer-error"
+            [attr.data-error-code]="p.code"
+          >
+            {{ p.fields['amount'] || p.message }}
+          </p>
+        }
+        <p class="hint">
+          Daily limit AED 50,000 across your accounts (not counting transfers between them). New
+          beneficiaries: AED 10,000 in the first 24 hours.
+        </p>
+        <button type="submit" data-testid="transfer-review">Review</button>
+      </form>
+    }
+    @case ('review') {
+      <ng-container *ngTemplateOutlet="summary" />
+      <div class="row-actions">
+        <button type="button" (click)="send()" data-testid="transfer-confirm">
+          Confirm and send
+        </button>
+        <button type="button" class="secondary" (click)="edit()" data-testid="transfer-edit">
+          Edit
+        </button>
+      </div>
+    }
+    @case ('sending') {
+      <ng-container *ngTemplateOutlet="summary" />
+      <div class="row-actions">
+        <button type="button" disabled data-testid="transfer-confirm">Sending…</button>
+      </div>
+    }
+    @case ('uncertain') {
+      <ng-container *ngTemplateOutlet="summary" />
+      <p class="notice" role="alert" data-testid="transfer-uncertain">
+        {{ problem()?.message }} We can't tell whether this transfer went through. Trying again is
+        safe: if it already went through, you won't be charged twice.
+      </p>
+      <div class="row-actions">
+        <button type="button" (click)="send()" data-testid="transfer-retry">Try again</button>
+        <a
+          routerLink="/accounts"
+          class="button-link secondary"
+          data-testid="transfer-check-accounts"
+          >Check my accounts</a
+        >
+      </div>
+    }
+    @case ('done') {
+      @if (result(); as r) {
+        <div class="success" role="status" data-testid="transfer-success">
+          <h2>{{ r.status === 'COMPLETED' ? 'Money sent' : 'Payment sent to the other bank' }}</h2>
+          <p>
+            <strong data-testid="transfer-success-amount">{{
+              r.amount | money: r.currency
+            }}</strong>
+            to <span data-testid="transfer-success-name">{{ r.creditor_name }}</span>
+          </p>
+          <p class="muted">
+            Reference <code data-testid="transfer-reference">{{ r.reference }}</code>
+          </p>
+          @if (r.status === 'PENDING') {
+            <p class="hint" data-testid="transfer-pending-note">
+              Payments to other UAE banks settle on the next working day if sent after 2 PM or at
+              the weekend.
+            </p>
+          }
+          @if (replayed()) {
+            <p class="notice" data-testid="transfer-replayed">
+              This transfer had already gone through. You were not charged twice.
+            </p>
+          }
+        </div>
+        <div class="row-actions">
+          <a
+            [routerLink]="['/accounts', r.from_account]"
+            class="button-link"
+            data-testid="transfer-view-statement"
+            >View statement</a
+          >
+          <button
+            type="button"
+            class="secondary"
+            (click)="startAgain()"
+            data-testid="transfer-another"
+          >
+            Send another
+          </button>
+        </div>
+      }
+    }
+  }
+
+  <ng-template #summary>
+    <dl class="summary" data-testid="transfer-summary">
+      <dt>From</dt>
+      <dd data-testid="summary-from">
+        {{ fromAccount()?.nickname || fromAccount()?.type_label }}
+      </dd>
+      <dt>To</dt>
+      <dd data-testid="summary-to">
+        {{ payee()?.name }} <code>{{ payee()?.iban }}</code>
+      </dd>
+      <dt>Amount</dt>
+      <dd data-testid="summary-amount" class="balance">
+        {{ form.controls.amount.value.trim() | money }}
+      </dd>
+      @if (form.controls.remarks.value.trim()) {
+        <dt>Remarks</dt>
+        <dd data-testid="summary-remarks">{{ form.controls.remarks.value.trim() }}</dd>
+      }
+    </dl>
+  </ng-template>
+</main>

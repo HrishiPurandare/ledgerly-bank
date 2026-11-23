@@ -10,7 +10,32 @@
   color: #fff;
   font-weight: 700;
   text-decoration: none;
+}
+.nav {
+  display: flex;
+  gap: 1rem;
   margin-right: auto;
+  margin-left: 1rem;
+}
+.nav a {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  padding: 0.2rem 0;
+  border-bottom: 2px solid transparent;
+}
+.nav a.active {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+  .nav {
+    order: 3;
+    width: 100%;
+    margin: 0;
+  }
 }
 .who {
   opacity: 0.9;

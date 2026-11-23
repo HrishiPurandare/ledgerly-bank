@@ -58,3 +58,31 @@ export interface Transaction {
   counterparty: string;
   created_at: string;
 }
+
+export interface Beneficiary {
+  id: number;
+  name: string;
+  iban: string;
+  iban_display: string;
+  nickname: string;
+  status: 'PENDING' | 'ACTIVE' | 'LOCKED';
+  created_at: string;
+  activated_at: string | null;
+}
+
+export interface Transfer {
+  id: number;
+  reference: string;
+  uetr: string;
+  kind: 'OWN' | 'INTERNAL' | 'LOCAL';
+  status: 'COMPLETED' | 'PENDING';
+  from_account: number;
+  to_account: number | null;
+  beneficiary: number | null;
+  creditor_name: string;
+  creditor_iban: string;
+  amount: string;
+  currency: string;
+  remarks: string;
+  created_at: string;
+}
