@@ -874,3 +874,136 @@ Log in as `sara@example.com` and:
 12. It may still see the old rows (or the loading state) and fail, or pass by luck. It should wait for the result: e.g. `expect(page.getByTestId('statement-count')).toHaveText(/13 transactions/)` or the URL plus `statement-table`, using Playwright's auto-retrying assertions, never a fixed sleep.
 
 </details>
+
+---
+
+# Part 7: Beneficiaries and transfer screens (Forge90 day 16)
+
+The screens where money moves. The front end has one job above all: **never pay twice**, even when the network fails, the customer double-clicks, or the server dies mid-request. The rest (OTP, limits, errors) is about telling the customer the truth in plain words.
+
+Budget: two 2-hour sessions plus the quiz. This part is the one to explain in an interview.
+
+## 49. Key concepts
+
+**One key per transfer, reused on every retry.** The API needs an `Idempotency-Key` header (Part 3). The page makes one (`crypto.randomUUID()`) when the customer reaches **Review**, and every send of *that* reviewed transfer uses it. One rule, set in one place (`review()`):
+
+| What happens | Key | Why |
+|---|---|---|
+| Customer clicks Review | new key | a new transfer |
+| Network fails / 5xx, customer clicks "Try again" | **same key** | if the first attempt went through, the server replays it (`Idempotent-Replayed: true`) instead of paying again |
+| Customer clicks Edit, or gets a business-rule "no", then Review again | new key | different details = a different transfer (reusing the key would be a 409) |
+| "Send another" with the same amount | new key | the customer really means a second payment |
+
+**Certain vs uncertain failures.** A 400/404/409 is a clear "no": the server answered and moved nothing, so the page goes back to the form with the message. No answer at all (status 0) or a 5xx is **uncertain**: the money may have moved before the connection dropped. The page says exactly that ("we can't tell whether this transfer went through; trying again is safe") and offers a retry with the same key. Saying "failed" here would push the customer to start a *new* transfer, which is how real people pay twice. (`core/api-error.ts`, `toProblem().uncertain`.)
+
+**Match on codes, not wording.** Business errors carry a stable `code` (`daily_limit_exceeded`, `new_beneficiary_limit`, `otp_locked`...). The page and the tests branch on the code; the `detail` text is only displayed. The error element carries `data-error-code`, so a UI test can assert the rule that fired without depending on the sentence.
+
+**Two layers of validation.** The browser checks format (IBAN shape, amount pattern, not more than the balance, 6-digit code) for quick feedback. The API checks everything again, including what the browser can't know (mod-97 check digits, today's total, the 24-hour cooling-off). Client-side checks are UX, server-side checks are security.
+
+**Beneficiary flow:** add → API emails a 6-digit code → "Waiting for code" → enter code → "Confirmed" (and a "Send money" link, `/transfer?beneficiary=<id>`). Wrong code: "2 attempt(s) left" and the box clears. Third wrong code or expired: the row becomes "Locked", the box closes, and the message says to remove and add again. Removing asks first (an inline "Remove / Keep", not a browser `confirm()` popup, which UI tests handle badly).
+
+**What's only offered when valid:** frozen accounts never appear in "From"; the "To" list never contains the "From" account; only confirmed beneficiaries can be paid.
+
+**New test ids:** beneficiaries: `beneficiary-<id>` + `data-test-role="beneficiary"`, `beneficiary-status`, `beneficiary-enter-code`, `beneficiary-send`, `beneficiary-delete` / `-yes` / `-no`, `otp-input`, `otp-submit`, `otp-error`, `add-name`, `add-iban`, `add-submit`, `add-error`, `beneficiary-notice`. Transfer: `transfer-from`, `dest-own`, `dest-beneficiary`, `transfer-to-account`, `transfer-beneficiary`, `transfer-amount`, `transfer-amount-error`, `transfer-review`, `transfer-summary`, `transfer-confirm`, `transfer-edit`, `transfer-error` (with `data-error-code`), `transfer-uncertain`, `transfer-retry`, `transfer-success`, `transfer-reference`, `transfer-replayed`, `transfer-another`. Navigation: `nav-accounts`, `nav-transfer`, `nav-beneficiaries`.
+
+## 50. How it's tested (132 Vitest tests)
+
+- **An injectable key factory** (`IDEMPOTENCY_KEY`): tests provide `key-1`, `key-2`... so they can assert *which* key each request carried.
+- The key tests: double click → exactly one request; network failure → retry carries `key-1` and the replayed notice shows; 502 → same; a business "no" → next try `key-2`; Edit → `key-2`; "Send another" → `key-2`.
+- Beneficiaries: IBAN normalised before sending (`ae07 0331 ...` → `AE070331...`), wrong IBAN format never calls the API, OTP format checked before the API, wrong code / locked / confirmed, remove asks first.
+- **Mutation check: 8 of 8 caught** (after one design fix, see §51): retry with a new key; network failure treated as a clear "no"; key kept across reviews; frozen accounts offered; unconfirmed beneficiaries offered; no balance check; IBAN sent as typed; locked code not shown on the row.
+- **Manual check against the real API** (Sara): added Lina Haddad with a spaced lower-case IBAN; wrong code → "2 attempt(s) left"; code read from the server console → Confirmed; AED 10,000.01 to her → `new_beneficiary_limit`; AED 250 with a double click → **one** POST, "Payment sent to the other bank"; **stopped the API server**, sent AED 100 → "can't tell whether it went through"; restarted it, "Try again" → sent; the server held exactly one AED 100 and one AED 250 transfer. No horizontal scroll at 375 px.
+
+## 51. Bugs found while building
+
+1. **`computed()` can't see `control.touched`.** The amount error was a `computed()` that read `control.touched`, which isn't a signal, so clicking Review with an empty amount showed nothing. Spotted while writing the code, proved by a test that failed for exactly that reason, fixed with a `submitted` signal.
+2. **`(ngSubmit)` on a form without a form directive never fires.** The code box used a lone `[formControl]` inside a plain `<form>`. `ngSubmit` only exists when `[formGroup]` (or `ngForm`) is on the form, so Confirm did a native form submit (a page reload in a real browser) and `confirm()` never ran. Three tests caught it; the box now has its own form group, and every form in the app was checked for the same mistake.
+3. **Two safety lines that hid each other.** The key was replaced in `review()` *and* cleared in `edit()`, so removing either one changed nothing, and the mutation check missed both. Duplicated safety logic drifts apart unnoticed. Now there's one rule in one place, and breaking it is caught.
+4. **Limit messages showed "AED 10000.00"** while the app shows "AED 10,000.00" everywhere else (seen in the browser). The API now formats amounts in messages with separators, pinned by two backend tests.
+5. Not bugs, but checked rather than assumed: the browser tool names radios and dropdowns by their value, not their label; reading `element.labels` showed every label is right.
+
+## 52. Run it
+
+```bash
+cd backend && python manage.py runserver      # watch this terminal: OTP emails are printed here
+```
+
+```bash
+cd frontend && npm start
+```
+
+Log in as `sara@example.com`:
+- [ ] Add a beneficiary with IBAN `ae07 0331 2345 6789 0123 456` (spaces, lower case). What is sent to the API (DevTools → Network → Payload)?
+- [ ] Enter a wrong code twice, then the right one from the server terminal.
+- [ ] Send AED 10,000.01 to the new beneficiary. Which `data-error-code` appears on the error?
+- [ ] Send AED 250. In Network, find the `Idempotency-Key` request header.
+- [ ] Review AED 100, stop the API server (Ctrl+C), click Confirm. Restart it and click "Try again". Then check the statement: how many AED 100 rows?
+- [ ] Repeat, but this time copy the request as cURL from DevTools *before* stopping, and run it twice against the running server. What does the second response's `Idempotent-Replayed` header say?
+
+## 53. Read it, in this order
+
+| # | File | What to understand |
+|---|---|---|
+| 1 | `core/api-error.ts` + spec | Business codes vs field errors; certain vs uncertain. |
+| 2 | `pages/transfer/transfer.ts`: `review()`, `send()` | The one key rule; the two failure paths. |
+| 3 | `transfer.html` | The steps (form → review → sending → done / uncertain), `data-error-code`. |
+| 4 | `transfer.spec.ts` | The `IDEMPOTENCY_KEY` token in tests; how each key is asserted. |
+| 5 | `pages/beneficiaries/*` | OTP flow, `normaliseIban`, the inline remove confirmation. |
+| 6 | `backend/payments/services.py` (`create_transfer`) | The server side of the same key (Part 3). |
+
+## 54. Break it
+
+1. [ ] In `send()`, make a new key every time (`this.idempotencyKey = this.newKey()`). Which tests fail? Describe exactly how a customer pays twice.
+2. [ ] Treat every error as certain (`if (false)` instead of `if (problem.uncertain)`). What does the customer see after a timeout, and what do they probably do next?
+3. [ ] Remove `[formGroup]="otpForm"` from the code form (use `[formControl]` on the input). Run the tests, then try it in the browser. What happens when you click Confirm?
+4. [ ] Offer all beneficiaries, not just confirmed ones. What does the API answer if you pick a pending one, and which layer protected the money?
+
+## 55. Explain it
+
+1. When does the page make a new Idempotency-Key, and when does it reuse one? Why?
+2. Why is a timeout "uncertain" but a 400 "certain"?
+3. Why match on `code` rather than on the message?
+4. If the API checks everything anyway, why validate in the browser at all?
+5. Why an inline "Remove / Keep" instead of `window.confirm()`?
+6. What did the mutation check teach about the two lines that cleared the key?
+
+## 56. Quiz (tonight)
+
+**Part A: concepts (1 point each)**
+
+1. Name the four steps of the transfer page.
+2. Which HTTP outcomes count as uncertain?
+3. What does `Idempotent-Replayed: true` mean for the customer?
+4. Which accounts can appear in "From"?
+5. How many wrong codes lock a beneficiary, and what must the customer do then?
+
+**Part B: read the code (2 points each)**
+
+6. Where is the key created, and what makes it predictable in tests?
+7. What does `toProblem` return for `{"amount": ["..."]}` with status 400?
+8. Why does the transfer page call `/api/accounts/` again after a success?
+9. In the double-click test, what proves only one request was sent?
+
+**Part C: predict, then run (3 points each)**
+
+10. The customer reviews AED 300 and the request times out. Instead of "Try again", they click "Send money" in the menu, enter AED 300 again, Review and Confirm. Can the money move twice? What does the page do to make this less likely, and what would close the gap fully?
+11. A Playwright test needs the OTP to confirm a beneficiary. Name two ways to get it in a test environment, and one way that must never exist in production.
+12. The API returns 409 `idempotency_key_reused`. With this front end, what sequence of events could cause it?
+
+<details>
+<summary>Answers</summary>
+
+1. Form → review → sending → done (or "uncertain" when the outcome isn't known).
+2. No response at all (status 0, e.g. network down or timeout) and any 5xx.
+3. The transfer had already gone through on an earlier attempt; this response repeats it and no money moved again.
+4. The customer's own ACTIVE accounts (never frozen ones).
+5. Three. Remove the beneficiary and add it again (a new code is emailed).
+6. In `review()`, via the injected `IDEMPOTENCY_KEY` factory; tests provide a factory that returns `key-1`, `key-2`...
+7. `{ code: 'validation', message: 'Please check the highlighted fields.', fields: { amount: '...' }, uncertain: false }`.
+8. The balances shown in "From" have changed; reloading keeps them true for the next transfer and for the client-side balance check.
+9. `transferRequest()` uses `expectOne`, which fails if there were zero or two matching requests.
+10. Yes: a fresh page and a fresh Review make a *new* key, so if the first attempt had gone through, this is a second payment. The page reduces the risk by offering only "Try again" (same key) and "Check my accounts" from the uncertain state (no Edit), and by never calling the outcome "failed". Closing it fully needs more: e.g. remember the pending key in session storage until the outcome is known, or have the server warn about an identical transfer in the last few minutes.
+11. Read the email from a test mail catcher (MailHog in Docker Compose, Django's in-memory outbox in API tests) or read it from the server log in local runs. Never: an API endpoint or header that returns the code, or a fixed "magic" code that always works, in production.
+12. Retrying with the same key but a different body. With this page that shouldn't happen: any change goes through Review, which makes a new key. Seeing it would mean a bug (e.g. the key not being replaced in `review()`), and the 409 is the server catching it.
+
+</details>

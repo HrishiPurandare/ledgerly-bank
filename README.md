@@ -23,7 +23,7 @@ Ledgerly Bank is fictional. All customers, accounts and money are invented test 
 | ISO 20022 `pacs.008` messages for transfers to other banks (schema-validated, golden-file tested) | ✅ |
 | Angular 21 front end: login, session refresh, route guards, `data-testid` everywhere | ✅ |
 | Dashboard (exact totals) and statements (filters in the URL, pagination, Dubai time) | ✅ |
-| Beneficiary and transfer screens | 🔜 |
+| Beneficiaries (add, emailed code, lock after 3 wrong codes) and transfers (review step, idempotent retries, plain-language limit errors) | ✅ |
 | Docker Compose (Postgres + API + UI) | 🔜 |
 
 ## Quick start
@@ -46,8 +46,8 @@ npm ci && npm start               # http://localhost:4200 (proxies /api to :8000
 ## Tests
 
 ```bash
-cd backend && pytest -q           # 155 API tests (+3 concurrency tests on Postgres)
-cd frontend && npm test           # 94 Angular unit tests (Vitest, run in UTC)
+cd backend && pytest -q           # 159 API tests (+3 concurrency tests on Postgres)
+cd frontend && npm test           # 132 Angular unit tests (Vitest, run in UTC)
 ```
 
 CI runs every API test on **SQLite and Postgres 17**, fails on missing migrations, and fails if the committed `openapi.yaml` no longer matches the code (an unreviewed API contract change).
@@ -66,6 +66,7 @@ CI runs every API test on **SQLite and Postgres 17**, fails on missing migration
 - **Refresh tokens rotate and the old one is blacklisted**, so a stolen, already-used refresh token can't be replayed.
 - **The web app treats the session carefully**: an expired access token is refreshed silently, and requests that fail together share **one** refresh call (verified against the real API). If the refresh fails, the user lands on the login page with a "session expired" message and is sent back to where they were afterwards. `returnUrl` only accepts same-site paths, so the login page can't be used as an open redirect.
 - **The statement's filters live in the URL**, so a filtered statement can be bookmarked, shared and undone with Back. The URL is treated as user input (junk like `?page=-1` or `?category=toString` never reaches the API), and `switchMap` cancels an older request when filters change, so a slow stale response can never overwrite a newer one.
+- **The transfer screen never pays twice.** One `Idempotency-Key` per reviewed transfer, reused on every retry. A timeout or 5xx is shown as *"we can't tell whether it went through; trying again is safe"*, never as "failed" (which pushes people to start a second payment). Verified by stopping the API mid-transfer, restarting it and retrying: exactly one payment. Business errors carry a stable code (`data-error-code` on the page), so tests assert the rule, not the wording.
 - **Money on screen is exact**: totals are added in whole cents (`BigInt`), never floats, and per currency. Dates are shown in Dubai time whatever the browser's time zone, and the unit tests run in UTC so a missing time zone fails on every machine, not only in CI.
 - **Django 5.2 LTS**, not the newest 6.x: supported until 2028, and every dependency here is proven on it. Likewise **Angular 21 (LTS until mid-2027)**, because Angular 22 needs Node 22.22+.
 
