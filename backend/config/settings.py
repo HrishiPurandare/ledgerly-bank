@@ -120,7 +120,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "Ledgerly Bank API",
     "DESCRIPTION": "Fictional banking API used as the system under test for a test-automation portfolio.",
-    "VERSION": "0.1.0",
+    "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     # The API description is public (like any documented API); the data behind it is not.
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
