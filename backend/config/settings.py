@@ -18,6 +18,15 @@ if not SECRET_KEY:
 if not DEBUG and len(SECRET_KEY) < 32:
     raise RuntimeError("DJANGO_SECRET_KEY must be at least 32 characters.")
 ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h]
+# The admin login posts a form: behind a proxy on another port, Django must trust that origin.
+CSRF_TRUSTED_ORIGINS = [o for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o]
+SECURE_REFERRER_POLICY = "same-origin"
+# Only behind real HTTPS (the local Docker stack is plain HTTP on localhost, so these stay off there).
+if os.getenv("LEDGERLY_HTTPS", "false").lower() == "true":
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # the proxy terminates TLS
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -38,6 +47,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # serves /static/ itself in containers (DEBUG off)
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -80,6 +90,11 @@ TIME_ZONE = "Asia/Dubai"
 USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    # Compressed, but no manifest: a manifest would make tests depend on running collectstatic first.
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {

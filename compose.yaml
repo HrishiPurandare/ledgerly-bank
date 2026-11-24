@@ -1,0 +1,55 @@
+# The whole bank on one machine: docker compose up --build  ->  http://localhost:8080
+# Production-like on purpose: DEBUG off, gunicorn, Postgres, real SMTP (to Mailpit), non-root containers.
+name: ledgerly
+
+services:
+  db:
+    image: postgres:17.7-alpine3.22
+    environment:
+      POSTGRES_USER: ledgerly
+      POSTGRES_PASSWORD: ledgerly # never published: the database port isn't exposed outside Docker
+      POSTGRES_DB: ledgerly
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerly -d ledgerly"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mail:
+    # Catches every email the bank sends (OTP codes). Inbox UI: http://localhost:8025
+    image: axllent/mailpit:v1.33.1
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  api:
+    build: ./backend
+    environment:
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Create .env first - see README (Run with Docker)}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,api
+      CSRF_TRUSTED_ORIGINS: http://localhost:8080
+      DATABASE_URL: postgres://ledgerly:ledgerly@db:5432/ledgerly
+      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      EMAIL_HOST: mail
+      EMAIL_PORT: "1025"
+      AUTH_THROTTLE_RATE: ${AUTH_THROTTLE_RATE:-10/min}
+      LEDGERLY_ALLOW_SEED: "true" # demo data with DEBUG off: allowed here, and only here
+      LEDGERLY_SEED_ON_START: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      mail:
+        condition: service_started
+
+  web:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:8080:8080" # localhost only: not reachable from other machines on your network
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
