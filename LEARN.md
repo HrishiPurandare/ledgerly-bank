@@ -1007,3 +1007,98 @@ Log in as `sara@example.com`:
 12. Retrying with the same key but a different body. With this page that shouldn't happen: any change goes through Review, which makes a new key. Seeing it would mean a bug (e.g. the key not being replaced in `review()`), and the 409 is the server catching it.
 
 </details>
+
+---
+
+# Part 8: Docker Compose, the whole bank in containers (Forge90 day 17)
+
+Until now the bank ran as two dev servers (`runserver`, `ng serve`) on SQLite. Day 17 runs it the way a test environment would: one command, four containers, production settings. Every later project (Playwright, API tests, Kubernetes) starts from this stack.
+
+Budget: one 2-hour session plus the quiz.
+
+## 57. Key concepts
+
+```
+browser ──► web (nginx :8080) ──/api, /admin, /static──► api (gunicorn :8000) ──► db (Postgres 17)
+               │ serves the built Angular app                    │
+               │ adds security headers                           └──SMTP──► mail (Mailpit, inbox UI :8025)
+```
+
+| Container | Image | Job |
+|---|---|---|
+| `db` | `postgres:17.7-alpine3.22` | Data, in a named volume (`pgdata`) that survives restarts. Not reachable from outside Docker. |
+| `mail` | `axllent/mailpit:v1.33.1` | A fake mail server: catches every email, shows it at :8025, has an API (day 18 reads OTPs from it). |
+| `api` | built from `backend/Dockerfile` | Django under **gunicorn** (3 workers), DEBUG off, non-root user. Entrypoint migrates, seeds once. |
+| `web` | built from `frontend/Dockerfile` | Multi-stage: Node builds Angular, then only the static files go into an **unprivileged nginx** (~77 MB). |
+
+**Production-like, not development:** `runserver` and `ng serve` are for coding; they're slow, single-threaded and print debug pages. A test environment should behave like production, or tests pass against something customers never use. Here: DEBUG off, gunicorn, Postgres, real SMTP, built and minified front end, security headers.
+
+**Start order with health checks.** `depends_on` with `condition: service_healthy`: the API waits for Postgres to *accept connections* (not just for its container to start), and nginx waits for the API's `/api/health/`. `docker compose up --wait` returns only when all four are healthy, which is exactly what CI needs.
+
+**One origin.** nginx serves the app and forwards `/api/` to the API, so the browser talks to one origin (`localhost:8080`): no CORS, and cookies or tokens never cross sites. The same reason the dev setup uses `proxy.conf.json`.
+
+**Secrets.** The signing key comes from `.env` (git-ignored); compose refuses to start without it (`${DJANGO_SECRET_KEY:?...}`), instead of silently using a default that would end up in every clone. The Postgres password in `compose.yaml` is fine *only* because the database port isn't published.
+
+**Demo data with DEBUG off.** The seed command refuses to run with DEBUG off (public passwords). Compose opts in explicitly with `LEDGERLY_ALLOW_SEED=true`, and the entrypoint seeds only if Sara doesn't exist, so restarts keep your data.
+
+**HTTPS settings behind one switch.** `manage.py check --deploy` wants HSTS, secure cookies and an SSL redirect. Those break a plain-HTTP local stack, so they're on only with `LEDGERLY_HTTPS=true` (for a real deployment behind TLS). The two warnings left (HSTS subdomains, preload) are decisions for whoever owns the domain.
+
+**Static files with DEBUG off.** Django stops serving `/static/` when DEBUG is off. WhiteNoise lets the API serve its own (admin CSS, the browsable API), compressed; nginx just forwards `/static/`.
+
+**Security headers (nginx):** a Content Security Policy (`script-src 'self'`: no inline scripts, nothing from other sites), `frame-ancestors 'none'` + `X-Frame-Options: DENY` (no clickjacking), `nosniff`, `Referrer-Policy`, `Permissions-Policy`. An nginx trap: a `location` with its own `add_header` *drops* every `add_header` from the server block, so the headers live in one file included in each location.
+
+**Caching:** `index.html` is `no-cache` (always check for a new release); hashed files (`main-ABC123.js`) are cached for a year, because a new release has new file names.
+
+## 58. Problems hit while building
+
+1. **The CSP broke the app's styles, and only in the browser.** Angular's production build inlines critical CSS and loads the full stylesheet with `<link media="print" onload="this.media='all'">`. `script-src 'self'` blocks that inline `onload`, so the stylesheet stayed `media="print"`: the page rendered with only the critical CSS. Every test passed; the browser console showed the violation. Fixed by turning off critical-CSS inlining (`"inlineCritical": false` in `angular.json`), not by weakening the CSP with `'unsafe-inline'`. Day 18 adds a check that the served page has no inline handlers.
+2. **WhiteNoise warned on every test request** (`No directory at: staticfiles/`) because tests don't run `collectstatic`. Tests don't serve static files, so `settings_test.py` removes the middleware.
+3. **gunicorn 27.0.1 was only 12 days old**; the project rule is releases at least two weeks old, so it's pinned to 26.2.0. Mailpit pinned to v1.33.1 for the same reason.
+4. **Ollama and Docker can't run together on an 8 GB Mac**: Ollama was stopped for this work and restarted afterwards.
+
+## 59. Run it
+
+```bash
+echo "DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '\n/+=')" > .env
+docker compose up --build --wait
+docker compose ps                       # all four healthy? which ports are published, and to which address?
+docker compose logs api | grep Seeded
+```
+
+- [ ] Log in at http://localhost:8080, add a beneficiary, and find the code at http://localhost:8025.
+- [ ] `curl -sI localhost:8080/` : list the security headers. Then `curl -sI localhost:8080/api/health/`: which are missing, and why is that OK for a JSON API?
+- [ ] `curl -s -o /dev/null -w "%{http_code}\n" localhost:8080/accounts/7` : why 200 and not 404?
+- [ ] `docker compose exec api id` and `docker compose exec web id`: who are the processes running as?
+- [ ] `docker compose restart api`, then log in again: is your new beneficiary still there? Now `docker compose down -v && docker compose up --wait`: is it?
+
+## 60. Break it
+
+1. [ ] Remove the `include security-headers.conf;` line from the `location /` block. Which headers does `curl -sI localhost:8080/` still show?
+2. [ ] Set `"inlineCritical": true` again, rebuild `web`, open the app. What does it look like, and what's in the browser console?
+3. [ ] Remove `condition: service_healthy` from the API's `depends_on: db`, then `docker compose down -v && docker compose up`. Read the API logs: what can go wrong on a slow machine?
+4. [ ] Delete `.env` and run `docker compose up`. What's the message, and why is that better than a default key?
+
+## 61. Quiz (tonight)
+
+1. Name the four containers and what each does.
+2. What does `condition: service_healthy` add over a plain `depends_on`?
+3. Why is the web image ~77 MB when building it needs Node and hundreds of MB of packages?
+4. Why does `localhost:8080/accounts/7` return `index.html`?
+5. What broke the styles, and why was weakening the CSP the wrong fix?
+6. Why are ports published as `127.0.0.1:8080:8080` rather than `8080:8080`?
+7. How does the API get static files served with DEBUG off?
+8. What makes seeding safe to run on every start?
+
+<details>
+<summary>Answers</summary>
+
+1. `db` (Postgres, data), `mail` (Mailpit, catches emails), `api` (Django + gunicorn), `web` (nginx: the built app, security headers, proxy to the API).
+2. It waits until the dependency passes its health check (Postgres accepting connections, the API answering `/api/health/`), not just until its container has started.
+3. Multi-stage build: the Node stage builds the app; the final image is nginx plus the built static files only.
+4. nginx's `try_files $uri /index.html`: any path that isn't a file gets the app, and Angular's router shows the right page.
+5. The production build's inline `onload` handler on the stylesheet link was blocked by `script-src 'self'`. Allowing `'unsafe-inline'` would also allow injected scripts, the main thing a CSP is there to stop; changing the build removes the inline handler instead.
+6. Bound to 127.0.0.1, they're reachable only from this machine, not from others on the same Wi-Fi.
+7. WhiteNoise middleware in Django serves the files collected at image build time (`collectstatic`).
+8. The entrypoint checks whether Sara exists and seeds only if not; and the seed command still refuses with DEBUG off unless `LEDGERLY_ALLOW_SEED=true` is set explicitly.
+
+</details>

@@ -24,9 +24,24 @@ Ledgerly Bank is fictional. All customers, accounts and money are invented test 
 | Angular 21 front end: login, session refresh, route guards, `data-testid` everywhere | ✅ |
 | Dashboard (exact totals) and statements (filters in the URL, pagination, Dubai time) | ✅ |
 | Beneficiaries (add, emailed code, lock after 3 wrong codes) and transfers (review step, idempotent retries, plain-language limit errors) | ✅ |
-| Docker Compose (Postgres + API + UI) | 🔜 |
+| Docker Compose: Postgres, API (gunicorn, DEBUG off), web (nginx, CSP), Mailpit for OTP emails | ✅ |
 
-## Quick start
+## Run with Docker (the whole bank, one command)
+
+```bash
+echo "DJANGO_SECRET_KEY=$(openssl rand -base64 48 | tr -d '\n/+=')" > .env   # once
+docker compose up --build --wait
+```
+
+| Open | What |
+|---|---|
+| http://localhost:8080 | The bank. Log in as `sara@example.com` / `Ledgerly-Demo-2026` (also `omar@`, `lina@`) |
+| http://localhost:8025 | Mailpit: the inbox that catches OTP emails |
+| http://localhost:8080/api/docs/ | API documentation (Swagger UI) |
+
+Production-like on purpose: DEBUG off, gunicorn, Postgres 17, real SMTP, non-root containers, strict security headers, ports bound to localhost only. Demo data is created on the first start. `docker compose down -v` removes everything, including the database.
+
+## Quick start (without Docker)
 
 ```bash
 cd backend
