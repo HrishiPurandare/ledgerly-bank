@@ -1134,6 +1134,14 @@ A test that has never failed proves little. Each was broken on purpose:
 - The inline-handler detector was also checked against five crafted pages (inline `onload`, inline `<script>`, `<script src>`, `OnError =` with odd spacing, the word "online" in text).
 - One check was too weak at first ("the statement can be searched" only checked for HTTP 200); it now proves exactly one AED 1.00 debit exists for the run.
 
+### Two bugs found by breaking the stack (not by any test)
+
+Stopping the mail container (Break it #1 below, tried before writing the answer) exposed:
+1. **A beneficiary was saved even though its code email failed.** The API answered 500 *and* kept a PENDING beneficiary whose code nobody would ever get; every retry then failed with `duplicate_beneficiary`. Now the create and the email share one database transaction: if sending fails, nothing is kept, and the answer is a clear `503 otp_not_sent` ("nothing was saved; please try again"). The real error was `socket.gaierror` (a stopped container's name no longer resolves), so the code catches `OSError`, the parent of every SMTP, connection and DNS error. Two backend tests.
+2. **Server errors left no trace.** With DEBUG off and no `LOGGING` setting, Django only *emails* 500s to `ADMINS` (none) and prints nothing, so `docker compose logs` showed nothing. Now everything at WARNING and above goes to the console.
+
+Front end: a 5xx that carries a business code (`otp_not_sent`) is now treated as a deliberate, *certain* answer; a 5xx without one (a crash, a proxy's 502) stays uncertain (Part 7).
+
 ## 64. In CI
 
 A new `stack` job: create a one-off signing key → `docker compose up --build --wait` → `python3 e2e/smoke.py` → on failure, print every container's logs → always `docker compose down -v`. It runs in parallel with the unit-test jobs.
@@ -1149,7 +1157,7 @@ open http://localhost:8025                 # the smoke test's code emails are he
 
 ## 66. Break it
 
-1. [ ] `docker compose stop mail`, run the smoke test. Which check fails, what does the API do when it can't send the email, and is that what a bank should do?
+1. [ ] `docker compose stop mail`, run the smoke test. Which check fails, and what exactly does the API answer? Then look at `docker compose logs api`. (Compare with the two bugs above: what would you have seen before the fix?)
 2. [ ] `docker compose stop db`, run it. Which is the *first* failing check? Restart with `docker compose start db`: does it recover without restarting the API?
 3. [ ] Change one byte in the UETR check (`!=` instead of `==`). Does the smoke test notice its own bug?
 
