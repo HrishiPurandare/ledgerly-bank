@@ -54,4 +54,16 @@ describe('toProblem', () => {
     expect(toProblem(http(400, 'plain text')).code).toBe('unknown');
     expect(toProblem(new Error('boom')).code).toBe('unknown');
   });
+
+  it('a 5xx with a business code is a deliberate, certain answer', () => {
+    const p = toProblem(
+      http(503, { code: 'otp_not_sent', detail: "We couldn't send your confirmation code." }),
+    );
+    expect(p.code).toBe('otp_not_sent');
+    expect(p.uncertain).toBe(false);
+  });
+
+  it('a 502 from the proxy, with an HTML body, stays uncertain', () => {
+    expect(toProblem(http(502, '<html>Bad Gateway</html>')).uncertain).toBe(true);
+  });
 });

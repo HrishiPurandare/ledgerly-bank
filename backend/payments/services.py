@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -16,6 +17,8 @@ from banking.models import Account, Transaction
 from payments import otp, rules
 from payments.errors import TransferRejected
 from payments.models import Beneficiary, Transfer
+
+logger = logging.getLogger(__name__)
 
 # ---------- beneficiaries ----------
 
@@ -33,14 +36,27 @@ def add_beneficiary(user, *, name: str, iban: str, nickname: str, now: datetime)
     if Beneficiary.objects.filter(owner=user).count() >= settings.LEDGERLY["MAX_BENEFICIARIES"]:
         raise TransferRejected("too_many_beneficiaries", "You can have up to 100 beneficiaries.")
 
-    beneficiary = Beneficiary.objects.create(
-        owner=user, name=name, iban=iban, nickname=nickname, created_at=now
-    )
-    code = otp.new_code()
-    beneficiary.otp_hash = otp.hash_code(beneficiary.id, code)
-    beneficiary.otp_expires_at = now + timedelta(minutes=settings.LEDGERLY["OTP_MINUTES"])
-    beneficiary.save(update_fields=["otp_hash", "otp_expires_at"])
-    otp.send(user.email, name, code)
+    # One transaction with the email: if the code can't be sent, the beneficiary isn't kept either.
+    # Otherwise the customer is left with a PENDING beneficiary whose code never arrives, and every retry
+    # fails with duplicate_beneficiary (found by stopping the mail server in Docker).
+    with transaction.atomic():
+        beneficiary = Beneficiary.objects.create(
+            owner=user, name=name, iban=iban, nickname=nickname, created_at=now
+        )
+        code = otp.new_code()
+        beneficiary.otp_hash = otp.hash_code(beneficiary.id, code)
+        beneficiary.otp_expires_at = now + timedelta(minutes=settings.LEDGERLY["OTP_MINUTES"])
+        beneficiary.save(update_fields=["otp_hash", "otp_expires_at"])
+        try:
+            otp.send(user.email, name, code)
+        except OSError as err:  # every smtplib error, refused connections and DNS failures are OSErrors
+            logger.error("OTP email to beneficiary %s not sent: %r", beneficiary.id, err)
+            raise TransferRejected(
+                "otp_not_sent",
+                "We couldn't send your confirmation code, so nothing was saved. "
+                "Please try again in a few minutes.",
+                503,
+            ) from err
     return beneficiary
 
 

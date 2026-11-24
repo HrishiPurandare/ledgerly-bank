@@ -137,6 +137,16 @@ LEDGERLY = {
     "OTP_MAX_ATTEMPTS": 3,
 }
 
+# With DEBUG off, Django's default logging only EMAILS server errors to ADMINS (none here) and prints
+# nothing, so a 500 in Docker left no trace at all. Log to the console, where `docker compose logs` reads.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "root": {"handlers": ["console"], "level": os.getenv("LOG_LEVEL", "WARNING")},
+}
+
 # OTP emails: printed to the console in development; MailHog in Docker; an in-memory outbox in tests.
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")

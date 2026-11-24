@@ -125,3 +125,38 @@ def test_other_customers_beneficiaries_are_invisible(auth_api, make_user):
     assert confirm(auth_api, theirs.id, "123456").status_code == 404
     assert auth_api.delete(f"{URL}{theirs.id}/").status_code == 404
     assert Beneficiary.objects.filter(pk=theirs.id).exists()
+
+
+def test_if_the_code_email_cannot_be_sent_nothing_is_left_behind(auth_api, mailoutbox, monkeypatch):
+    """Found by stopping the mail server in Docker: the API answered 500 AND kept a PENDING beneficiary
+    whose code nobody would ever receive, so every retry then failed with duplicate_beneficiary."""
+    import smtplib
+
+    from payments import otp
+
+    def mail_server_down(*args, **kwargs):
+        raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+    monkeypatch.setattr(otp, "send_mail", mail_server_down)
+    response = add(auth_api)
+    assert response.status_code == 503
+    assert response.json()["code"] == "otp_not_sent"
+    assert not Beneficiary.objects.exists()  # rolled back with the failed email
+
+    monkeypatch.undo()  # the mail server is back: trying again just works
+    assert add(auth_api).status_code == 201 and len(mailoutbox) == 1
+
+
+def test_an_unreachable_mail_server_is_handled_the_same_way(auth_api, monkeypatch):
+    import socket
+
+    from payments import otp
+
+    def unreachable(*args, **kwargs):
+        # What Docker gave with the mail container stopped: its name no longer resolves.
+        raise socket.gaierror(-2, "Name or service not known")
+
+    monkeypatch.setattr(otp, "send_mail", unreachable)
+    response = add(auth_api)
+    assert (response.status_code, response.json()["code"]) == (503, "otp_not_sent")
+    assert not Beneficiary.objects.exists()
