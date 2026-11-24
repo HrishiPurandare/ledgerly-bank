@@ -65,7 +65,11 @@ cd backend && pytest -q           # 159 API tests (+3 concurrency tests on Postg
 cd frontend && npm test           # 132 Angular unit tests (Vitest, run in UTC)
 ```
 
-CI runs every API test on **SQLite and Postgres 17**, fails on missing migrations, and fails if the committed `openapi.yaml` no longer matches the code (an unreviewed API contract change).
+```bash
+docker compose up --build --wait && python3 e2e/smoke.py    # 29 checks against the running containers
+```
+
+CI builds the whole Docker stack on every push and runs the smoke test through nginx: security headers, login, a beneficiary confirmed with the code read from the test mail server, an idempotent transfer, and its pacs.008 message. It also runs every API test on **SQLite and Postgres 17**, fails on missing migrations, and fails if the committed `openapi.yaml` no longer matches the code (an unreviewed API contract change).
 
 ## Design choices
 

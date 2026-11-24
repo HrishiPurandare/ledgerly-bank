@@ -1102,3 +1102,74 @@ docker compose logs api | grep Seeded
 8. The entrypoint checks whether Sara exists and seeds only if not; and the seed command still refuses with DEBUG off unless `LEDGERLY_ALLOW_SEED=true` is set explicitly.
 
 </details>
+
+---
+
+# Part 9: Smoke-testing the running stack, locally and in CI (Forge90 day 18)
+
+Unit tests prove each piece works alone, with fakes for everything around it. A **smoke test** proves the assembled system works: real nginx, real gunicorn, real Postgres, real SMTP. It doesn't test every rule (the 159 + 132 unit tests do that); it tests that the pieces are wired together correctly. Run it after every deployment, and in CI on every push.
+
+Budget: one 2-hour session plus the quiz.
+
+## 62. What `e2e/smoke.py` checks (29 checks, ~2 seconds)
+
+| Area | Checks |
+|---|---|
+| Web server | app served; strict CSP and other security headers; **no inline scripts or handlers in the page** (the CSP would block them, day 17's bug); nginx version hidden; deep links return the app; hashed files cached for a year; `index.html` revalidated. |
+| API through nginx | health (API + Postgres); data needs a login; wrong password refused; Django static files served; Sara sees 2 accounts; Omar's account is a 404 for her. |
+| Email | add a beneficiary → the code email arrives in **Mailpit** (read through its API) → wrong code refused → right code confirms. |
+| Money | AED 10,000.01 to a new beneficiary refused; AED 1.00 sent; **same Idempotency-Key replays** (same id, `Idempotent-Replayed: true`); balance down by exactly 1.00 (Decimal, not float); statement shows exactly one debit; **pacs.008** parsed: UETR matches, amount AED 1.00. |
+
+Design choices:
+- **Standard library only** (`urllib`, `json`, `xml.etree`): runs on any machine or CI runner with Python 3, nothing to install.
+- **Safe to rerun:** each run creates its own uniquely named beneficiary (and a valid IBAN with computed mod-97 check digits) and moves AED 1.00, so it never collides with earlier runs.
+- **Exit code** 0 / 1, and every check prints PASS/FAIL with the actual value on failure.
+- `BASE_URL` / `MAILPIT_URL` let the same script check any environment (only `http(s)://`: urllib would also open `file://`).
+
+## 63. Testing the smoke test
+
+A test that has never failed proves little. Each was broken on purpose:
+- **Security headers removed** from nginx (config copied into the running container, `nginx -s reload`): 4 checks failed, exactly those headers.
+- **Critical-CSS inlining switched back on** (day 17's bug), web image rebuilt: exactly 1 check failed, "page has no inline scripts or event handlers ( onload=)".
+- The inline-handler detector was also checked against five crafted pages (inline `onload`, inline `<script>`, `<script src>`, `OnError =` with odd spacing, the word "online" in text).
+- One check was too weak at first ("the statement can be searched" only checked for HTTP 200); it now proves exactly one AED 1.00 debit exists for the run.
+
+## 64. In CI
+
+A new `stack` job: create a one-off signing key → `docker compose up --build --wait` → `python3 e2e/smoke.py` → on failure, print every container's logs → always `docker compose down -v`. It runs in parallel with the unit-test jobs.
+
+## 65. Run it
+
+```bash
+docker compose up --build --wait
+python3 e2e/smoke.py
+python3 e2e/smoke.py                       # again: still passes?
+open http://localhost:8025                 # the smoke test's code emails are here
+```
+
+## 66. Break it
+
+1. [ ] `docker compose stop mail`, run the smoke test. Which check fails, what does the API do when it can't send the email, and is that what a bank should do?
+2. [ ] `docker compose stop db`, run it. Which is the *first* failing check? Restart with `docker compose start db`: does it recover without restarting the API?
+3. [ ] Change one byte in the UETR check (`!=` instead of `==`). Does the smoke test notice its own bug?
+
+## 67. Quiz (tonight)
+
+1. What's the difference between the smoke test and the unit tests, in one sentence each?
+2. Why does the smoke test read the code from Mailpit's API instead of the database?
+3. Why is it safe to run the smoke test twice against the same stack?
+4. How does the CI job make sure the containers are stopped even when the smoke test fails?
+5. Why compare balances with `Decimal` in a test script?
+6. Which smoke check would have caught day 17's CSS bug, and how did you prove it?
+
+<details>
+<summary>Answers</summary>
+
+1. Unit tests check each rule in isolation with fakes around it; the smoke test checks the real, assembled system end to end.
+2. It goes through the same path a customer's email does (Django → SMTP → mail server), and test code shouldn't reach around the system into its database.
+3. Every run uses a unique beneficiary name and IBAN and moves only AED 1.00 from a large balance; nothing depends on earlier runs.
+4. The `down -v` step has `if: always()`.
+5. The same reason as in the app: floats can't represent most cents exactly, so a correct balance could compare unequal (or a wrong one equal).
+6. "page has no inline scripts or event handlers": the web image was rebuilt with `inlineCritical: true` and that check (only that one) failed with ` onload=`.
+
+</details>
