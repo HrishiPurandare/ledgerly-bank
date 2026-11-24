@@ -1181,3 +1181,89 @@ open http://localhost:8025                 # the smoke test's code emails are he
 6. "page has no inline scripts or event handlers": the web image was rebuilt with `inlineCritical: true` and that check (only that one) failed with ` onload=`.
 
 </details>
+
+---
+
+# Part 10: v1.0.0, telling the story (Forge90 day 19)
+
+The code is done for now. This part is about explaining it: in an interview, on a call with a hiring manager, or in a LinkedIn post. Practise out loud; the first three times will feel clumsy.
+
+Budget: one hour of practice plus the final quiz. Revisit before every interview.
+
+## 68. The 2-minute pitch
+
+> "Ledgerly Bank is a fictional UAE bank I built as the system under test for my automation portfolio. It's a Django REST API and an Angular front end, running as four containers with Docker Compose: Postgres, the API, nginx and a test mail server.
+>
+> It has the parts that make banking software hard to test: money that must never be paid twice, so transfers use idempotency keys and row locks; rules at exact boundaries, like the AED 50,000 daily limit and AED 10,000 to a new beneficiary in the first 24 hours; one-time codes sent by email; and ISO 20022 pacs.008 messages for payments to other banks.
+>
+> Testing is layered: 161 API tests running on SQLite and Postgres, 134 Angular unit tests, and a smoke test that drives a real transfer through the running containers, reading the code from the test mail server. All of it runs in CI on every push.
+>
+> The part I'm proudest of is what the tests caught. The Postgres CI job found a race where two simultaneous transfers could exceed the daily limit, which SQLite could never show. Stopping the mail container showed a failed email left a beneficiary nobody could confirm. And mutation testing showed two of my own tests only passed because my laptop is in Dubai's time zone.
+>
+> Everything I build next, Playwright, API and Kubernetes projects, runs against this bank."
+
+## 69. Whiteboard it in five boxes
+
+1. **Browser → nginx** (app + CSP, one origin, proxies `/api`).
+2. **nginx → API** (gunicorn, DEBUG off; JWT auth; owner-only queries).
+3. **API → Postgres** (one transaction per transfer; customer row lock, then accounts in id order).
+4. **API → Mailpit** (OTP email; create and send in one transaction).
+5. **API → pacs.008** (XML for other banks; UETR follows the payment).
+
+Then draw the test layers next to it: unit tests per box, the smoke test across all of them, CI around everything.
+
+## 70. Three STAR stories
+
+**1. The race condition (concurrency, real databases).**
+- *Situation:* daily transfer limit of AED 50,000, enforced inside a transaction with row locks; all tests green on SQLite.
+- *Task:* make sure the limit holds under concurrent requests.
+- *Action:* added a Postgres job to CI and concurrency tests firing simultaneous transfers. CI failed: two transfers totalling AED 60,000 both succeeded. Root cause: the request's timestamp was taken before waiting for the lock, and the daily total only counted transfers up to that timestamp, so the transfer committed while we waited was missed.
+- *Result:* removed the upper bound, added a deterministic regression test, and kept Postgres in CI permanently. Lesson: test on the database you deploy on; SQLite serialises writes and hides races.
+
+**2. The email that failed (resilience, testing the assembled system).**
+- *Situation:* a smoke test passed against the Docker stack.
+- *Task:* see what happens when a dependency is down, not just when everything is up.
+- *Action:* stopped the mail container. The API returned 500 and kept a beneficiary whose code would never arrive; retries then failed as duplicates. Logs showed nothing, because Django with DEBUG off doesn't print server errors.
+- *Result:* create and send in one transaction, a clear `503 otp_not_sent`, console logging, two regression tests, and the front end treats a coded 503 as a certain answer. Lesson: failure paths need testing as deliberately as the happy path.
+
+**3. Tests that couldn't fail (test quality).**
+- *Situation:* 91 passing front-end tests for the statement and dashboard.
+- *Task:* check the tests would actually catch bugs.
+- *Action:* mutation testing: broke the code six ways. Two survived: removing the Dubai time zone (my Mac is in Dubai, so dates still looked right) and adding money with floats (`toFixed(2)` hid the error; one big-number test passed by luck).
+- *Result:* tests pinned to UTC with a guard test, and a case floats can't pass. Since then, every day ends with a mutation check. Lesson: a test that has never failed hasn't proven anything.
+
+## 71. Questions you'll get, and short answers
+
+| Question | Answer in one breath |
+|---|---|
+| How do you stop a double payment? | Idempotency key per transfer, reused on retry; server replays the first result; plus row locks and one transaction. The UI says "uncertain" on timeouts, never "failed". |
+| Why Postgres in CI if tests pass on SQLite? | SQLite serialises writes, so it can't show races; Postgres found a real one. |
+| How do you test emails? | API tests use Django's in-memory outbox; the smoke test reads Mailpit's API. Never a backdoor endpoint that returns the code. |
+| What's a smoke test vs E2E? | Smoke: a fast check that the assembled system is wired correctly. Full E2E (Playwright, next project) covers user journeys in a browser. |
+| How do you know your tests are good? | Mutation testing: break the code on purpose; every break must fail a test. |
+| What's IDOR and how is it prevented? | Accessing someone else's object by changing an id. Every query is filtered by owner; someone else's account is a 404 identical to a missing one. |
+| What's in a pacs.008? | ISO 20022 customer credit transfer between banks: debtor, creditor, amount, settlement date, and a UETR that follows the payment end to end. |
+| Why is the CSP strict and how did it bite? | No inline scripts means injected scripts can't run; it blocked Angular's inline stylesheet loader, fixed in the build rather than by loosening the policy. |
+
+## 72. Final quiz (covers Parts 1-10)
+
+1. Name the four containers and how a request for `/api/accounts/` travels through them.
+2. What three things together guarantee a transfer is never paid twice?
+3. Why did the race only show on Postgres?
+4. What happens, step by step, when the mail server is down and a customer adds a beneficiary?
+5. Which layer of tests would catch each of these first: (a) a wrong limit boundary, (b) a missing security header, (c) a broken label on the Type filter, (d) nginx not forwarding `/api/`?
+6. Explain the difference between a certain and an uncertain failure, and how the UI treats each.
+7. Give the 30-second version of the pitch.
+
+<details>
+<summary>Answers</summary>
+
+1. `db`, `mail`, `api`, `web`. Browser → `web` (nginx, matches `/api/`) → `api` (gunicorn → Django: JWT check, owner-filtered query) → `db` (Postgres) → back the same way.
+2. An idempotency key per transfer (reused on retries, replayed by the server), one database transaction, and row locks (customer first, then accounts in id order). Plus a UI that never tells the customer a timeout "failed".
+3. SQLite allows one writer at a time, so two transfers can never overlap; Postgres runs them concurrently, which exposed the timestamp read before the lock.
+4. The API creates the beneficiary inside a transaction, tries to send the code, gets an `OSError` (DNS failure in Docker), logs it, raises `otp_not_sent` (503) → the transaction rolls back → nothing saved → the UI shows "nothing was saved; please try again".
+5. (a) API unit tests (boundary tests); (b) the smoke test; (c) the Angular unit test for labels; (d) the smoke test (or the stack health check).
+6. Certain: the server answered with a definite result (4xx, or a 5xx with a business code), so nothing happened; back to the form. Uncertain: no answer or an uncoded 5xx, so the money may have moved; keep the same idempotency key and offer a safe retry.
+7. "A fictional UAE bank I built to test against: Django API, Angular app, Postgres, all in Docker. It has the hard parts of banking: no double payments, exact limits, emailed codes, ISO 20022 messages. Hundreds of tests in CI on every push, and they caught real bugs: a race condition only Postgres could show, and a failure path that left customers stuck."
+
+</details>

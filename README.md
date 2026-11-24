@@ -11,6 +11,39 @@ Ledgerly Bank is fictional. All customers, accounts and money are invented test 
 
 ![Statement screen: filters, running balance, Dubai time](docs/statement.jpg)
 
+## At a glance
+
+| | |
+|---|---|
+| **What** | A fictional UAE bank: accounts, statements, beneficiaries with emailed codes, transfers with real limit rules, ISO 20022 `pacs.008` for payments to other banks |
+| **Stack** | Django 5.2 LTS + DRF · Angular 21 (signals, zoneless) · Postgres 17 · nginx · Docker Compose · Mailpit |
+| **Tests** | 161 API tests (+3 concurrency tests on real Postgres row locks) · 134 Angular unit tests · 29-check smoke test against the running containers |
+| **CI** | 4 jobs on every push: API on SQLite and Postgres, front end (format, tests, build), and the whole Docker stack + smoke test |
+| **Run it** | `docker compose up --build --wait` → http://localhost:8080 |
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    B[Browser] -->|":8080"| W["web: nginx<br/>Angular app + CSP"]
+    W -->|"/api /admin /static"| A["api: Django + gunicorn<br/>DEBUG off, non-root"]
+    A --> D[("db: Postgres 17")]
+    A -->|SMTP: OTP codes| M["mail: Mailpit<br/>inbox :8025"]
+    A -.->|"GET /transfers/{id}/pacs008/"| X["ISO 20022 pacs.008 XML<br/>(transfers to other banks)"]
+    T["e2e/smoke.py<br/>(CI, every push)"] -.-> W
+    T -.->|reads codes| M
+```
+
+## Bugs the tests caught while building it
+
+The tests earned their place. A few of the real bugs they found:
+
+1. **A race in the daily limit, caught by CI on Postgres.** Two transfers at the same instant could both pass the AED 50,000 check: the daily total was read up to the request's own clock, which was taken *before* waiting for the row lock. SQLite (one writer at a time) could never show it; the Postgres CI job did. Fixed, with a deterministic test.
+2. **A failed code email left a beneficiary behind**, found by stopping the mail container: a 500, plus a "pending" beneficiary whose code would never arrive, so every retry failed as a duplicate. Now one transaction: no email, nothing saved, a clear `503 otp_not_sent`. The same experiment showed server errors weren't logged at all with DEBUG off.
+3. **The security headers broke the page styles, only in production builds.** Angular inlines critical CSS and loads the rest with an inline `onload` handler, which the Content Security Policy blocks. Fixed in the build (not by weakening the CSP), and the smoke test now fails if an inline handler ever comes back; that was proven by putting the bug back.
+4. **`?category=toString` passed validation**, because JavaScript's `in` also sees inherited properties. Found by a test written for exactly that case.
+5. **Tests that couldn't fail.** A mutation check (breaking the code on purpose) showed dates looked right only because this machine is in Dubai's time zone, and that floats looked exact because `toFixed(2)` hid the error. Tests now run in UTC, with a large-number case.
+
 ## What's in it
 
 | Area | Status |
@@ -88,6 +121,20 @@ CI builds the whole Docker stack on every push and runs the smoke test through n
 - **The transfer screen never pays twice.** One `Idempotency-Key` per reviewed transfer, reused on every retry. A timeout or 5xx is shown as *"we can't tell whether it went through; trying again is safe"*, never as "failed" (which pushes people to start a second payment). Verified by stopping the API mid-transfer, restarting it and retrying: exactly one payment. Business errors carry a stable code (`data-error-code` on the page), so tests assert the rule, not the wording.
 - **Money on screen is exact**: totals are added in whole cents (`BigInt`), never floats, and per currency. Dates are shown in Dubai time whatever the browser's time zone, and the unit tests run in UTC so a missing time zone fails on every machine, not only in CI.
 - **Django 5.2 LTS**, not the newest 6.x: supported until 2028, and every dependency here is proven on it. Likewise **Angular 21 (LTS until mid-2027)**, because Angular 22 needs Node 22.22+.
+
+## Limitations (on purpose, for now)
+
+- **Fictional bank, local only.** No real payment network: transfers to other banks produce a `pacs.008` message and stay `PENDING`; nothing settles them.
+- **The pacs.008 schema is a subset** written from the published definition (real element names, order and data rules), not the official ISO file.
+- **Tokens are kept in `localStorage`** so tests can reuse a logged-in state. A production bank would use httpOnly cookies (the trade-off is documented in LEARN Part 5).
+- **The Docker stack is plain HTTP on localhost.** HTTPS-only settings (HSTS, secure cookies, SSL redirect) switch on with `LEDGERLY_HTTPS=true` behind a TLS proxy.
+
+## What's next
+
+This repo is the system under test for the rest of the portfolio:
+- **Playwright (TypeScript)**: UI tests on these screens: roles, saved login state, accessibility checks.
+- **API tests**: contract tests from `openapi.yaml`, plus `pacs.008` schema checks.
+- **Kubernetes**: the same images in a local cluster, with the smoke test as a Kubernetes Job.
 
 ## License
 
