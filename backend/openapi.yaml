@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: NovaBank API
-  version: 1.1.0
+  version: 1.2.0
   description: Fictional banking API used as the system under test for a test-automation
     portfolio.
 paths:

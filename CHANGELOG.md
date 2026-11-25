@@ -2,6 +2,14 @@
 
 All notable changes to NovaBank. Dates are when the work was done.
 
+## [1.2.0] - 2026-11-25
+
+### Fixed
+- **An expired session now returns the customer to the page they opened.** The app's first call (`/api/auth/me/`) can fail before the router has finished its first navigation, when `router.url` is still `/`, so the customer landed on Accounts after logging in again. The interceptor now uses the navigation in progress, or the browser address before the first navigation (`currentPlace()`). A race: it happened about 15 times in 16.
+- **"Total balance (1 account)"**, not "(1 accounts)".
+
+Both found by the Playwright suite (playwright-ts-sdet-framework), which kept them as `test.fail()` until this release.
+
 ## [1.1.0] - 2026-11-25
 
 ### Changed
