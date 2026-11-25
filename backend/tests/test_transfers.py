@@ -72,7 +72,7 @@ def test_own_account_transfer_moves_money_instantly(auth_api, current, savings):
     assert savings.transactions.get().balance_after == Decimal("5250.50")
 
 
-def test_transfer_to_another_ledgerly_customer_is_instant(auth_api, current, omar_account, make_beneficiary):
+def test_transfer_to_another_novabank_customer_is_instant(auth_api, current, omar_account, make_beneficiary):
     beneficiary = make_beneficiary(iban=omar_account.iban, name="Omar Ali")
     response = send(
         auth_api, from_account=current.id, beneficiary=beneficiary.id, amount="1000.00", remarks="Rent"

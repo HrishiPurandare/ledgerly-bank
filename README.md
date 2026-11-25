@@ -1,13 +1,13 @@
-# Ledgerly Bank
+# NovaBank
 
-![CI](https://github.com/HrishiPurandare/ledgerly-bank/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/HrishiPurandare/novabank/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![Django](https://img.shields.io/badge/Django-5.2%20LTS-0C4B33)
 ![Angular](https://img.shields.io/badge/Angular-21-DD0031)
 
-A small, realistic banking app built **to be tested**. It's the shared system under test for my test-automation portfolio: Playwright, API, Cypress and Kubernetes projects all run against it, and the [Ask Ledgerly chatbot](https://github.com/HrishiPurandare/ai-quality-engineering-lab) answers questions about the same bank's policies.
+A small, realistic banking app built **to be tested**. It's the shared system under test for my test-automation portfolio: Playwright, API, Cypress and Kubernetes projects all run against it, and the [NovaAsk chatbot](https://github.com/HrishiPurandare/ai-quality-engineering-lab) answers questions about the same bank's policies.
 
-Ledgerly Bank is fictional. All customers, accounts and money are invented test data.
+NovaBank is fictional. All customers, accounts and money are invented test data.
 
 ![Statement screen: filters, running balance, Dubai time](docs/statement.jpg)
 
@@ -68,7 +68,7 @@ docker compose up --build --wait
 
 | Open | What |
 |---|---|
-| http://localhost:8080 | The bank. Log in as `sara@example.com` / `Ledgerly-Demo-2026` (also `omar@`, `lina@`) |
+| http://localhost:8080 | The bank. Log in as `sara@example.com` / `NovaBank-Demo-2026` (also `omar@`, `lina@`) |
 | http://localhost:8025 | Mailpit: the inbox that catches OTP emails |
 | http://localhost:8080/api/docs/ | API documentation (Swagger UI) |
 
@@ -82,7 +82,7 @@ python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env
 python manage.py migrate
-python manage.py seed             # demo customers: sara@ / omar@ / lina@example.com, password Ledgerly-Demo-2026
+python manage.py seed             # demo customers: sara@ / omar@ / lina@example.com, password NovaBank-Demo-2026
 python manage.py runserver        # http://localhost:8000/api/docs
 ```
 
@@ -108,7 +108,7 @@ CI builds the whole Docker stack on every push and runs the smoke test through n
 
 - **Secure by default.** Every endpoint needs a login unless it's on a four-item allowlist, and a test walks the OpenAPI schema to prove it: a new endpoint with a forgotten permission fails CI.
 - **A customer only ever sees their own money.** Someone else's account is a 404 with the same body as an account that doesn't exist, so probing ids reveals nothing (OWASP API #1, broken object-level authorization).
-- **Transfer rules come from the bank's published policy**, the same text the Ask Ledgerly chatbot answers from: AED 50,000 a day per customer across all accounts, AED 10,000 in the first 24 hours to a new beneficiary, up to 100 beneficiaries, OTP to add one. Each rule is tested at its exact boundary (AED 50,000.00 passes, 0.01 more is refused).
+- **Transfer rules come from the bank's published policy**, the same text the NovaAsk chatbot answers from: AED 50,000 a day per customer across all accounts, AED 10,000 in the first 24 hours to a new beneficiary, up to 100 beneficiaries, OTP to add one. Each rule is tested at its exact boundary (AED 50,000.00 passes, 0.01 more is refused).
 - **Money moves inside one database transaction with row locks**: the customer first (so two accounts can't both slip under the daily limit), then the accounts in id order (no deadlocks). Concurrency tests fire 10 transfers at the same instant on Postgres.
 - **Idempotency keys**: a retried or double-clicked transfer replays the first response (`Idempotent-Replayed: true`) and never pays twice; reusing a key for a different transfer is a 409.
 - **ISO 20022 pacs.008 for every transfer to another bank** (`GET /api/transfers/{id}/pacs008/`): built with lxml, validated against a subset XSD written from the published pacs.008.001.08 definition (real element names, order and data rules; not the official file), settlement date from the bank's 2 PM cut-off and the UAE Saturday–Sunday weekend, names escaped, and any DOCTYPE refused (XXE).
@@ -127,7 +127,7 @@ CI builds the whole Docker stack on every push and runs the smoke test through n
 - **Fictional bank, local only.** No real payment network: transfers to other banks produce a `pacs.008` message and stay `PENDING`; nothing settles them.
 - **The pacs.008 schema is a subset** written from the published definition (real element names, order and data rules), not the official ISO file.
 - **Tokens are kept in `localStorage`** so tests can reuse a logged-in state. A production bank would use httpOnly cookies (the trade-off is documented in LEARN Part 5).
-- **The Docker stack is plain HTTP on localhost.** HTTPS-only settings (HSTS, secure cookies, SSL redirect) switch on with `LEDGERLY_HTTPS=true` behind a TLS proxy.
+- **The Docker stack is plain HTTP on localhost.** HTTPS-only settings (HSTS, secure cookies, SSL redirect) switch on with `NOVABANK_HTTPS=true` behind a TLS proxy.
 
 ## What's next
 

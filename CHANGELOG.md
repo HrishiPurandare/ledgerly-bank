@@ -1,6 +1,14 @@
 # Changelog
 
-All notable changes to Ledgerly Bank. Dates are when the work was done.
+All notable changes to NovaBank. Dates are when the work was done.
+
+## [1.1.0] - 2026-11-25
+
+### Changed
+- **Renamed from Ledgerly Bank to NovaBank** (repo `ledgerly-bank` → `novabank`; the chatbot "Ask Ledgerly" is now NovaAsk). Settings `LEDGERLY_*` → `NOVABANK_*`, demo password `NovaBank-Demo-2026`, browser storage key `novabank.auth`, fictional BIC `NOVAAEADXXX`, emails from `no-reply@novabank.example`, Compose project and database `novabank`. No behaviour changes.
+
+### Fixed
+- Stack smoke test: the limit check now uses the richest account and states its precondition, instead of assuming the first account holds more than AED 10,000.01.
 
 ## [1.0.0] - 2026-11-24
 
@@ -10,7 +18,7 @@ The first complete version: a fictional bank you can run with one command, built
 - Email login with JWTs: rotating refresh tokens, blacklisted after use; rate-limited login; no user enumeration.
 - Accounts and statements: owner-only access (another customer's account is a 404), filters, pagination, immutable ledger with running balance, deterministic demo data (UAE IBANs with valid check digits).
 - Beneficiaries confirmed with an emailed 6-digit code (hashed at rest, 5-minute expiry, locked after 3 wrong codes).
-- Transfers between own accounts, to other Ledgerly customers and to other UAE banks, with the bank's published limits (AED 50,000 a day, AED 10,000 to a new beneficiary in the first 24 hours, 100 beneficiaries), idempotency keys and row locking.
+- Transfers between own accounts, to other NovaBank customers and to other UAE banks, with the bank's published limits (AED 50,000 a day, AED 10,000 to a new beneficiary in the first 24 hours, 100 beneficiaries), idempotency keys and row locking.
 - ISO 20022 `pacs.008.001.08` messages for transfers to other banks: schema-validated, golden-file tested, 2 PM cut-off and Saturday-Sunday weekend, DOCTYPE refused (XXE).
 - OpenAPI 3 spec committed and checked in CI; secure by default (a test walks the schema).
 

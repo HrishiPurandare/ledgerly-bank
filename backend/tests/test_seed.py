@@ -75,7 +75,7 @@ def test_demo_customers_can_log_in(api, seeded):
 
 def test_seed_command_refuses_to_run_in_production(db, settings, monkeypatch):
     settings.DEBUG = False
-    monkeypatch.delenv("LEDGERLY_ALLOW_SEED", raising=False)
+    monkeypatch.delenv("NOVABANK_ALLOW_SEED", raising=False)
     with pytest.raises(CommandError, match="Refusing"):
         call_command("seed")
     assert not Account.objects.exists()

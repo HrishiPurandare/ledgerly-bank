@@ -23,12 +23,12 @@ def matches(beneficiary_id: int, code: str, stored_hash: str) -> bool:
 
 
 def send(email: str, beneficiary_name: str, code: str) -> None:
-    minutes = settings.LEDGERLY["OTP_MINUTES"]
+    minutes = settings.NOVABANK["OTP_MINUTES"]
     send_mail(
-        subject="Ledgerly Bank: confirm your new beneficiary",
+        subject="NovaBank: confirm your new beneficiary",
         message=(
             f"Your code to add {beneficiary_name} is {code}. It expires in {minutes} minutes.\n"
-            "Ledgerly Bank will never ask for this code by phone."
+            "NovaBank will never ask for this code by phone."
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[email],

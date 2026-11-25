@@ -43,7 +43,7 @@ class Beneficiary(models.Model):
 class Transfer(models.Model):
     class Kind(models.TextChoices):
         OWN = "OWN"  # between the customer's own accounts
-        INTERNAL = "INTERNAL"  # to another Ledgerly customer: instant
+        INTERNAL = "INTERNAL"  # to another NovaBank customer: instant
         LOCAL = "LOCAL"  # to another UAE bank: sent as an ISO 20022 pacs.008 message
 
     class Status(models.TextChoices):

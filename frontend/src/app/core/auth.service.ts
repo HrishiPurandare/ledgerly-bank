@@ -4,7 +4,7 @@ import { Observable, finalize, map, shareReplay, switchMap, tap } from 'rxjs';
 
 import { Tokens, User } from './models';
 
-export const STORAGE_KEY = 'ledgerly.auth';
+export const STORAGE_KEY = 'novabank.auth';
 
 /**
  * Login state as signals. Tokens live in localStorage so a page reload keeps you logged in and

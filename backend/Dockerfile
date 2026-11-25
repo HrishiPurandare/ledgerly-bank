@@ -1,4 +1,4 @@
-# Ledgerly Bank API: production-like image (DEBUG off, gunicorn, non-root).
+# NovaBank API: production-like image (DEBUG off, gunicorn, non-root).
 FROM python:3.13.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -15,8 +15,8 @@ RUN pip install -r requirements.txt
 COPY . .
 RUN chmod +x docker-entrypoint.sh \
     && DJANGO_SECRET_KEY=build-only-placeholder-not-used-at-runtime python manage.py collectstatic --noinput \
-    && useradd --create-home --uid 10001 ledgerly
-USER ledgerly
+    && useradd --create-home --uid 10001 novabank
+USER novabank
 
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \

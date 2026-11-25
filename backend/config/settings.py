@@ -1,4 +1,4 @@
-"""Ledgerly Bank API settings. Everything that differs between machines comes from environment variables."""
+"""NovaBank API settings. Everything that differs between machines comes from environment variables."""
 
 import os
 from datetime import timedelta
@@ -22,7 +22,7 @@ ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0
 CSRF_TRUSTED_ORIGINS = [o for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o]
 SECURE_REFERRER_POLICY = "same-origin"
 # Only behind real HTTPS (the local Docker stack is plain HTTP on localhost, so these stay off there).
-if os.getenv("LEDGERLY_HTTPS", "false").lower() == "true":
+if os.getenv("NOVABANK_HTTPS", "false").lower() == "true":
     SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # the proxy terminates TLS
     SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
@@ -118,18 +118,18 @@ SIMPLE_JWT = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Ledgerly Bank API",
+    "TITLE": "NovaBank API",
     "DESCRIPTION": "Fictional banking API used as the system under test for a test-automation portfolio.",
-    "VERSION": "1.0.0",
+    "VERSION": "1.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
     # The API description is public (like any documented API); the data behind it is not.
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
     "COMPONENT_SPLIT_REQUEST": True,
 }
 
-# Ledgerly Bank's published limits (data/policies in the Ask Ledgerly chatbot say the same).
-LEDGERLY = {
-    "DAILY_LIMIT": os.getenv("LEDGERLY_DAILY_LIMIT", "50000.00"),
+# NovaBank's published limits (data/policies in the NovaAsk chatbot say the same).
+NOVABANK = {
+    "DAILY_LIMIT": os.getenv("NOVABANK_DAILY_LIMIT", "50000.00"),
     "NEW_BENEFICIARY_LIMIT": "10000.00",
     "NEW_BENEFICIARY_HOURS": 24,
     "MAX_BENEFICIARIES": 100,
@@ -151,4 +151,4 @@ LOGGING = {
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "1025"))
-DEFAULT_FROM_EMAIL = "Ledgerly Bank <no-reply@ledgerly.example>"
+DEFAULT_FROM_EMAIL = "NovaBank <no-reply@novabank.example>"

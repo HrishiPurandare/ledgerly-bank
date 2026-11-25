@@ -1,4 +1,4 @@
-/** Shapes returned by the Ledgerly API (see backend/openapi.yaml). Money is always a string, never a number. */
+/** Shapes returned by the NovaBank API (see backend/openapi.yaml). Money is always a string, never a number. */
 
 export interface Tokens {
   access: string;

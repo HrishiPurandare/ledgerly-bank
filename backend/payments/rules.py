@@ -1,4 +1,4 @@
-"""Transfer limits from Ledgerly Bank's published policy (the text the Ask Ledgerly chatbot answers from):
+"""Transfer limits from NovaBank's published policy (the text the NovaAsk chatbot answers from):
 
 - "The default daily limit ... is AED 50,000 per customer, across all accounts."
 - "Transfers to a newly added beneficiary are limited to AED 10,000 during the first 24 hours."
@@ -18,11 +18,11 @@ DUBAI = ZoneInfo("Asia/Dubai")
 
 
 def daily_limit() -> Decimal:
-    return Decimal(settings.LEDGERLY["DAILY_LIMIT"])
+    return Decimal(settings.NOVABANK["DAILY_LIMIT"])
 
 
 def new_beneficiary_limit() -> Decimal:
-    return Decimal(settings.LEDGERLY["NEW_BENEFICIARY_LIMIT"])
+    return Decimal(settings.NOVABANK["NEW_BENEFICIARY_LIMIT"])
 
 
 def start_of_day(now: datetime) -> datetime:
@@ -47,7 +47,7 @@ def sent_today(user, now: datetime) -> Decimal:
 
 
 def in_cooling_off(beneficiary, now: datetime) -> bool:
-    hours = settings.LEDGERLY["NEW_BENEFICIARY_HOURS"]
+    hours = settings.NOVABANK["NEW_BENEFICIARY_HOURS"]
     return beneficiary.activated_at is not None and now < beneficiary.activated_at + timedelta(hours=hours)
 
 

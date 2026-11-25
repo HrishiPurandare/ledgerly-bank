@@ -53,7 +53,7 @@ export function messageFor(err: unknown): string {
   if (err instanceof HttpErrorResponse) {
     if (err.status === 401) return 'Email or password is incorrect.';
     if (err.status === 429) return 'Too many attempts. Please wait a minute and try again.';
-    if (err.status === 0) return "Can't reach Ledgerly Bank. Check your connection and try again.";
+    if (err.status === 0) return "Can't reach NovaBank. Check your connection and try again.";
   }
   return 'Something went wrong. Please try again.';
 }

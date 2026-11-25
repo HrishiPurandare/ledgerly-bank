@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Ledgerly Bank: SUBSET of ISO 20022 pacs.008.001.08 (FI to FI Customer Credit Transfer).
+  NovaBank: SUBSET of ISO 20022 pacs.008.001.08 (FI to FI Customer Credit Transfer).
 
   Written for this project, modelled on the published pacs.008.001.08 message definition: same namespace,
   same element names, same order and the same data-type rules (patterns, lengths, code lists) for the
-  elements Ledgerly sends. It is NOT the official schema file: optional elements Ledgerly never uses are
+  elements NovaBank sends. It is NOT the official schema file: optional elements NovaBank never uses are
   left out, so a message valid here only uses real elements in the real order. Validate against the
   official XSD from iso20022.org before talking to a real payment network.
 -->

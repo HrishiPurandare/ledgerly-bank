@@ -1,4 +1,4 @@
-# Ledgerly Bank web: build the Angular app, then serve it with an unprivileged nginx.
+# NovaBank web: build the Angular app, then serve it with an unprivileged nginx.
 FROM node:22.12.0-alpine3.21 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./

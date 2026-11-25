@@ -63,7 +63,7 @@ describe('Login page', () => {
   it('logs in and goes to the page the user came from', async () => {
     fixture.componentRef.setInput('returnUrl', '/accounts?tab=savings');
     type('login-email', '  sara@example.com ');
-    type('login-password', 'Ledgerly-Demo-2026');
+    type('login-password', 'NovaBank-Demo-2026');
     await submit();
     const call = http.expectOne('/api/auth/login/');
     expect(call.request.body.email).toBe('sara@example.com'); // trimmed
@@ -107,7 +107,7 @@ describe('login helpers', () => {
   it.each([
     [401, 'Email or password is incorrect.'],
     [429, 'Too many attempts. Please wait a minute and try again.'],
-    [0, "Can't reach Ledgerly Bank. Check your connection and try again."],
+    [0, "Can't reach NovaBank. Check your connection and try again."],
     [500, 'Something went wrong. Please try again.'],
   ])('message for HTTP %i', (status, message) => {
     expect(messageFor(new HttpErrorResponse({ status }))).toBe(message);

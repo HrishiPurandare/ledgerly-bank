@@ -20,9 +20,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # Known passwords must never reach a real environment.
-        if not settings.DEBUG and os.getenv("LEDGERLY_ALLOW_SEED") != "true":
+        if not settings.DEBUG and os.getenv("NOVABANK_ALLOW_SEED") != "true":
             raise CommandError(
-                "Refusing to seed demo users with DEBUG off. Set LEDGERLY_ALLOW_SEED=true to override."
+                "Refusing to seed demo users with DEBUG off. Set NOVABANK_ALLOW_SEED=true to override."
             )
         if options["reset"]:
             reset()

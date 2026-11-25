@@ -1,6 +1,6 @@
-# Ledgerly Bank: web app
+# NovaBank: web app
 
-Angular 21 (standalone components, signals, zoneless) front end for the Ledgerly Bank API.
+Angular 21 (standalone components, signals, zoneless) front end for the NovaBank API.
 
 ```bash
 npm ci

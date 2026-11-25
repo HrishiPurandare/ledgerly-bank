@@ -24,7 +24,7 @@ from xml.etree import ElementTree
 
 BASE = os.getenv("BASE_URL", "http://localhost:8080").rstrip("/")
 MAILPIT = os.getenv("MAILPIT_URL", "http://localhost:8025").rstrip("/")
-PASSWORD = "Ledgerly-Demo-2026"  # noqa: S105 - published password of the fictional demo customers
+PASSWORD = "NovaBank-Demo-2026"  # noqa: S105 - published password of the fictional demo customers
 PACS008 = "{urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08}"
 
 for _url in (BASE, MAILPIT):  # urllib also opens file:// URLs; only ever talk HTTP(S)

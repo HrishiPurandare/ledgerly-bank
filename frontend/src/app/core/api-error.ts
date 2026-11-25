@@ -25,7 +25,7 @@ export function toProblem(err: unknown): ApiProblem {
     return problem('unknown', 'Something went wrong. Please try again.');
   }
   if (err.status === 0) {
-    return problem('network', "We couldn't reach Ledgerly Bank.", true);
+    return problem('network', "We couldn't reach NovaBank.", true);
   }
   // A business code is a deliberate answer, so it's certain even on a 5xx: e.g. 503 otp_not_sent means
   // "nothing was saved". A 5xx WITHOUT one (a crash, a proxy's 502) stays uncertain.
@@ -34,7 +34,7 @@ export function toProblem(err: unknown): ApiProblem {
     return problem(body['code'], body['detail']);
   }
   if (err.status >= 500) {
-    return problem('server', 'Ledgerly Bank had a problem answering.', true);
+    return problem('server', 'NovaBank had a problem answering.', true);
   }
   if (err.status === 404) {
     return problem('not_found', "That doesn't exist any more. Refresh and try again.");

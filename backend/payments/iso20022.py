@@ -1,6 +1,6 @@
 """ISO 20022 pacs.008.001.08: the message a bank sends to move a customer's money to another bank.
 
-Ledgerly builds one for every LOCAL transfer (to another UAE bank). The XML is a pure function of the
+NovaBank builds one for every LOCAL transfer (to another UAE bank). The XML is a pure function of the
 transfer, so the same transfer always gives byte-identical XML (and golden-file tests can compare it).
 """
 
@@ -15,7 +15,7 @@ from payments.models import Transfer
 
 NAMESPACE = "urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08"
 SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "pacs.008.001.08.subset.xsd"
-LEDGERLY_BIC = "LEDGAEADXXX"  # fictional BIC for the fictional bank
+NOVABANK_BIC = "NOVAAEADXXX"  # fictional BIC for the fictional bank
 DUBAI = ZoneInfo("Asia/Dubai")
 CUT_OFF = time(14, 0)  # policy: "made before 2:00 PM on a business day are credited the same day"
 WEEKEND = {5, 6}  # Saturday and Sunday, the UAE weekend since 2022
@@ -69,7 +69,7 @@ def build_pacs008(transfer: Transfer) -> bytes:
     _sub(tx, "ChrgBr", "SLEV")  # charges follow the clearing system's service level
     _sub(_sub(tx, "Dbtr"), "Nm", transfer.owner.full_name)
     _iban_account(tx, "DbtrAcct", transfer.from_account.iban)
-    _sub(_sub(_sub(tx, "DbtrAgt"), "FinInstnId"), "BICFI", LEDGERLY_BIC)
+    _sub(_sub(_sub(tx, "DbtrAgt"), "FinInstnId"), "BICFI", NOVABANK_BIC)
     # The creditor's bank is identified by the 3-digit UAE bank code inside its IBAN (characters 5-7).
     creditor_agent = _sub(_sub(tx, "CdtrAgt"), "FinInstnId")
     _sub(_sub(creditor_agent, "Othr"), "Id", f"AE-BANK-{transfer.creditor_iban[4:7]}")

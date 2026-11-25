@@ -5,7 +5,7 @@ The check digits use the ISO 13616 mod-97 rule, the same one every real bank use
 
 import re
 
-LEDGERLY_BANK_CODE = "999"  # fictional: no real UAE bank uses it
+NOVABANK_BANK_CODE = "999"  # fictional: no real UAE bank uses it
 UAE_IBAN = re.compile(r"^AE\d{21}$")
 
 
@@ -18,7 +18,7 @@ def check_digits(country: str, bban: str) -> str:
     return f"{98 - _to_digits(bban + country + '00') % 97:02d}"
 
 
-def make_uae_iban(account_number: str, bank_code: str = LEDGERLY_BANK_CODE) -> str:
+def make_uae_iban(account_number: str, bank_code: str = NOVABANK_BANK_CODE) -> str:
     if not (account_number.isdigit() and len(account_number) == 16):
         raise ValueError("account number must be 16 digits")
     bban = bank_code + account_number

@@ -25,18 +25,18 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: ledgerly
-          POSTGRES_PASSWORD: ledgerly
-          POSTGRES_DB: ledgerly
+          POSTGRES_USER: novabank
+          POSTGRES_PASSWORD: novabank
+          POSTGRES_DB: novabank
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U ledgerly" --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U novabank" --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: backend
     env:
       DJANGO_SECRET_KEY: ci-only-signing-key-that-is-long-enough
-      DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgres://ledgerly:ledgerly@localhost:5432/ledgerly' || '' }}
+      DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgres://novabank:novabank@localhost:5432/novabank' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

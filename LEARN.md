@@ -1,6 +1,6 @@
 # LEARN: how to study this repo
 
-Ledgerly Bank is the app the rest of the portfolio tests. You don't need to become a Django developer, but you need to **explain every rule it enforces and how each one is tested**, because interviewers will ask "how do you know this API is secure?"
+NovaBank is the app the rest of the portfolio tests. You don't need to become a Django developer, but you need to **explain every rule it enforces and how each one is tested**, because interviewers will ask "how do you know this API is secure?"
 
 Each part follows the same loop: key concepts → run it → read it in order → break it → explain it → quiz.
 
@@ -172,7 +172,7 @@ Budget: one 2-hour session, plus the quiz (45 min).
 
 **The ledger invariant:** `balance == sum(credits) - sum(debits)`, and each transaction's `balance_after` is the running balance. A test checks it for every seeded account. That test found a real bug (below).
 
-**IBAN:** `AE` + 2 check digits + 3-digit bank code + 16-digit account number = 23 characters. The check digits use **mod-97** (ISO 13616): move the first 4 characters to the end, turn letters into numbers (A=10 … Z=35), and the whole number mod 97 must be 1. It catches every single-digit typo. Ledgerly uses bank code `999`, which no real UAE bank uses.
+**IBAN:** `AE` + 2 check digits + 3-digit bank code + 16-digit account number = 23 characters. The check digits use **mod-97** (ISO 13616): move the first 4 characters to the end, turn letters into numbers (A=10 … Z=35), and the whole number mod 97 must be 1. It catches every single-digit typo. NovaBank uses bank code `999`, which no real UAE bank uses.
 
 **Broken object-level authorization (BOLA / IDOR), OWASP API #1.** The most common serious API bug: `/api/accounts/42/` returns account 42 to *anyone logged in*, because the code checks "is logged in" but not "owns this account". Here every query is filtered by `owner=request.user`, and:
 - someone else's account → **404, not 403**. A 403 would confirm the account exists;
@@ -183,7 +183,7 @@ Budget: one 2-hour session, plus the quiz (45 min).
 
 **Pagination:** 20 per page with `count`, `next` and `previous`. Tests check the boundary (25 rows → 20 + 5, and `next` is `null` on the last page).
 
-**Deterministic seed data.** `python manage.py seed` creates 3 customers, 6 accounts and ~370 transactions over 90 days from `random.Random(42)`. Same seed + same `--today` = byte-identical data, so tests and demos can say "Sara has a frozen account" and stay true. It includes edge cases on purpose: a frozen account, a Premier account with a large balance, a savings account with interest. It refuses to run with DEBUG off (`LEDGERLY_ALLOW_SEED=true` to override), because the demo password is public.
+**Deterministic seed data.** `python manage.py seed` creates 3 customers, 6 accounts and ~370 transactions over 90 days from `random.Random(42)`. Same seed + same `--today` = byte-identical data, so tests and demos can say "Sara has a frozen account" and stay true. It includes edge cases on purpose: a frozen account, a Premier account with a large balance, a savings account with interest. It refuses to run with DEBUG off (`NOVABANK_ALLOW_SEED=true` to override), because the demo password is public.
 
 ## 10. Bugs found while building
 
@@ -202,7 +202,7 @@ python manage.py seed --today 2026-11-22
 python manage.py runserver
 ```
 
-In Swagger (http://localhost:8000/api/docs), log in as `sara@example.com` / `Ledgerly-Demo-2026`:
+In Swagger (http://localhost:8000/api/docs), log in as `sara@example.com` / `NovaBank-Demo-2026`:
 - [ ] `GET /api/accounts/`, then a statement with `?category=CARD&min_amount=100`.
 - [ ] Log in as `omar@example.com` and try one of Sara's account ids. What do you get?
 - [ ] Try `?direction=SIDEWAYS`. Why is 400 better than an empty list?
@@ -266,7 +266,7 @@ In Swagger (http://localhost:8000/api/docs), log in as `sara@example.com` / `Led
 
 11. You add `?min_amount=420&max_amount=420` to the test statement. How many rows, and why?
 12. A developer adds `PATCH /api/accounts/{id}/` to rename an account and copies `AccountList`'s queryset. Which existing test still protects you, and what new test would you add?
-13. Production runs `python manage.py seed` by mistake. What happens? What if `LEDGERLY_ALLOW_SEED=true` is set there?
+13. Production runs `python manage.py seed` by mistake. What happens? What if `NOVABANK_ALLOW_SEED=true` is set there?
 
 <details>
 <summary>Answers</summary>
@@ -316,7 +316,7 @@ Plus rules any bank has: enough balance (`insufficient_funds`), no frozen accoun
 
 **Error codes, not just messages.** Every rejection returns `{"code": "daily_limit_exceeded", "detail": "..."}`. Tests and the UI match on the code; the wording can change freely.
 
-**Three kinds of transfer:** OWN (between your accounts), INTERNAL (to another Ledgerly customer: both sides update instantly), LOCAL (to another UAE bank: only your side is debited and the transfer is PENDING. Day 13 turns it into an ISO 20022 pacs.008 message). Each transfer gets a **UETR**, a UUID that identifies the payment end to end across banks.
+**Three kinds of transfer:** OWN (between your accounts), INTERNAL (to another NovaBank customer: both sides update instantly), LOCAL (to another UAE bank: only your side is debited and the transfer is PENDING. Day 13 turns it into an ISO 20022 pacs.008 message). Each transfer gets a **UETR**, a UUID that identifies the payment end to end across banks.
 
 **OTP done properly:**
 - generated with `secrets` (unpredictable), not `random`;
@@ -360,7 +360,7 @@ python manage.py seed --reset
 python manage.py runserver
 ```
 
-In Swagger, as `sara@example.com` / `Ledgerly-Demo-2026`:
+In Swagger, as `sara@example.com` / `NovaBank-Demo-2026`:
 - [ ] `POST /api/beneficiaries/` with `{"name": "Omar Ali", "iban": "<Omar's IBAN from GET /api/accounts/ as omar>"}`. The OTP email prints in the **server terminal**. Confirm it with `POST /api/beneficiaries/{id}/confirm/`.
 - [ ] `POST /api/transfers/` with header `Idempotency-Key: test-1` and AED 12,000 to that beneficiary. Which error, and why?
 - [ ] Send AED 9,000, then send it again with the **same** key. Check the response header and Sara's balance.
@@ -461,9 +461,9 @@ Budget: one 2-hour session, plus the quiz (45 min).
 
 Others you've met: `pain.001` (customer → bank instruction), `pacs.002` (payment status report), `camt.053` (statement).
 
-**What Ledgerly puts in the message:**
+**What NovaBank puts in the message:**
 
-| Element | Meaning | Ledgerly value |
+| Element | Meaning | NovaBank value |
 |---|---|---|
 | `GrpHdr/MsgId` | This message's id | `MSG-<reference>` |
 | `GrpHdr/CreDtTm` | When it was created, with time zone | transfer time, Dubai +04:00 |
@@ -473,11 +473,11 @@ Others you've met: `pain.001` (customer → bank instruction), `pacs.002` (payme
 | `IntrBkSttlmAmt` + `Ccy` | Amount banks settle | `1250.75` `AED` |
 | `IntrBkSttlmDt` | Settlement date | from the 2 PM cut-off rule |
 | `ChrgBr` | Who pays charges | `SLEV` (per the clearing system's service level) |
-| `Dbtr` / `DbtrAcct` / `DbtrAgt` | Payer, their IBAN, their bank | the customer, their IBAN, Ledgerly's (fictional) BIC |
+| `Dbtr` / `DbtrAcct` / `DbtrAgt` | Payer, their IBAN, their bank | the customer, their IBAN, NovaBank's (fictional) BIC |
 | `Cdtr` / `CdtrAcct` / `CdtrAgt` | Payee, their IBAN, their bank | the beneficiary, their IBAN, the bank code from the IBAN |
 | `RmtInf/Ustrd` | Free-text remittance info | the transfer remarks, left out when empty |
 
-**The subset XSD.** An XSD (XML Schema) is a machine-checkable contract: element names, order, which elements are required, patterns (IBAN, BIC, UUID v4) and code lists (`CLRG`, `SLEV`...). `payments/schemas/pacs.008.001.08.subset.xsd` was written for this project from the published message definition: real namespace, names, order and rules, minus the optional elements Ledgerly never sends. It isn't the official file (that comes from iso20022.org), and the header comment says so. Say it the same way in interviews: "validated against a subset schema I wrote from the standard; before a real network I'd validate against the official XSD and the network's usage guidelines."
+**The subset XSD.** An XSD (XML Schema) is a machine-checkable contract: element names, order, which elements are required, patterns (IBAN, BIC, UUID v4) and code lists (`CLRG`, `SLEV`...). `payments/schemas/pacs.008.001.08.subset.xsd` was written for this project from the published message definition: real namespace, names, order and rules, minus the optional elements NovaBank never sends. It isn't the official file (that comes from iso20022.org), and the header comment says so. Say it the same way in interviews: "validated against a subset schema I wrote from the standard; before a real network I'd validate against the official XSD and the network's usage guidelines."
 
 **Settlement date** (policy: "before 2:00 PM on a business day ... credited the same day"):
 - before 14:00 Dubai time, Monday to Friday → same day;
@@ -575,7 +575,7 @@ curl -s -H "Authorization: Bearer <access token>" localhost:8000/api/transfers/<
 3. Charges follow the service level agreed in the clearing system (each side pays its own bank under the scheme's rules).
 4. Saturday and Sunday, since January 2022 (previously Friday and Saturday).
 5. Only LOCAL transfers (to another UAE bank). OWN and INTERNAL get 409 `not_a_network_payment`.
-6. It only contains the elements Ledgerly sends (with the real names, order and rules); the official schema has many more optional elements.
+6. It only contains the elements NovaBank sends (with the real names, order and rules); the official schema has many more optional elements.
 7. Floats can't represent most decimal amounts exactly and `str(float(Decimal("500")))` gives `500.0`; `:.2f` on a Decimal gives exact `500.00`.
 8. It takes the 3-digit UAE bank code from characters 5–7 of the creditor's IBAN and sends it in `CdtrAgt/FinInstnId/Othr/Id`.
 9. Not well-formed XML (syntax error), a DOCTYPE present, or schema violations (including the validator's own internal error). It returns error strings instead of raising so callers and tests get a clear list and a bad message can never crash the caller.
@@ -733,7 +733,7 @@ cd frontend && npm test
 1. Any three of: standalone components, signals/computed, zoneless change detection, `@if`/`@for`/`@switch` control flow, lazy `loadComponent` routes, functional interceptors and guards, router input binding.
 2. Same-site `/api/` calls, except login, refresh, register and health; never requests to other sites.
 3. `/login?returnUrl=%2Faccounts`.
-4. 401: "Email or password is incorrect." 429: "Too many attempts. Please wait a minute and try again." Network failure (status 0): "Can't reach Ledgerly Bank. Check your connection and try again."
+4. 401: "Email or password is incorrect." 429: "Too many attempts. Please wait a minute and try again." Network failure (status 0): "Can't reach NovaBank. Check your connection and try again."
 5. `data-testid="account-<id>"` and `data-test-role="account"`.
 6. Converting to a JavaScript number turns the amount into a float, which can't represent every cent exactly; string operations show exactly what the API sent.
 7. `shareReplay(1)` makes concurrent subscribers share one HTTP call and its result; `finalize` clears `refreshInFlight` when it completes or fails, so the next expiry starts a fresh refresh.
@@ -1039,9 +1039,9 @@ browser ──► web (nginx :8080) ──/api, /admin, /static──► api (gu
 
 **Secrets.** The signing key comes from `.env` (git-ignored); compose refuses to start without it (`${DJANGO_SECRET_KEY:?...}`), instead of silently using a default that would end up in every clone. The Postgres password in `compose.yaml` is fine *only* because the database port isn't published.
 
-**Demo data with DEBUG off.** The seed command refuses to run with DEBUG off (public passwords). Compose opts in explicitly with `LEDGERLY_ALLOW_SEED=true`, and the entrypoint seeds only if Sara doesn't exist, so restarts keep your data.
+**Demo data with DEBUG off.** The seed command refuses to run with DEBUG off (public passwords). Compose opts in explicitly with `NOVABANK_ALLOW_SEED=true`, and the entrypoint seeds only if Sara doesn't exist, so restarts keep your data.
 
-**HTTPS settings behind one switch.** `manage.py check --deploy` wants HSTS, secure cookies and an SSL redirect. Those break a plain-HTTP local stack, so they're on only with `LEDGERLY_HTTPS=true` (for a real deployment behind TLS). The two warnings left (HSTS subdomains, preload) are decisions for whoever owns the domain.
+**HTTPS settings behind one switch.** `manage.py check --deploy` wants HSTS, secure cookies and an SSL redirect. Those break a plain-HTTP local stack, so they're on only with `NOVABANK_HTTPS=true` (for a real deployment behind TLS). The two warnings left (HSTS subdomains, preload) are decisions for whoever owns the domain.
 
 **Static files with DEBUG off.** Django stops serving `/static/` when DEBUG is off. WhiteNoise lets the API serve its own (admin CSS, the browsable API), compressed; nginx just forwards `/static/`.
 
@@ -1099,7 +1099,7 @@ docker compose logs api | grep Seeded
 5. The production build's inline `onload` handler on the stylesheet link was blocked by `script-src 'self'`. Allowing `'unsafe-inline'` would also allow injected scripts, the main thing a CSP is there to stop; changing the build removes the inline handler instead.
 6. Bound to 127.0.0.1, they're reachable only from this machine, not from others on the same Wi-Fi.
 7. WhiteNoise middleware in Django serves the files collected at image build time (`collectstatic`).
-8. The entrypoint checks whether Sara exists and seeds only if not; and the seed command still refuses with DEBUG off unless `LEDGERLY_ALLOW_SEED=true` is set explicitly.
+8. The entrypoint checks whether Sara exists and seeds only if not; and the seed command still refuses with DEBUG off unless `NOVABANK_ALLOW_SEED=true` is set explicitly.
 
 </details>
 
@@ -1192,7 +1192,7 @@ Budget: one hour of practice plus the final quiz. Revisit before every interview
 
 ## 68. The 2-minute pitch
 
-> "Ledgerly Bank is a fictional UAE bank I built as the system under test for my automation portfolio. It's a Django REST API and an Angular front end, running as four containers with Docker Compose: Postgres, the API, nginx and a test mail server.
+> "NovaBank is a fictional UAE bank I built as the system under test for my automation portfolio. It's a Django REST API and an Angular front end, running as four containers with Docker Compose: Postgres, the API, nginx and a test mail server.
 >
 > It has the parts that make banking software hard to test: money that must never be paid twice, so transfers use idempotency keys and row locks; rules at exact boundaries, like the AED 50,000 daily limit and AED 10,000 to a new beneficiary in the first 24 hours; one-time codes sent by email; and ISO 20022 pacs.008 messages for payments to other banks.
 >

@@ -15,7 +15,7 @@ from django.db import transaction as db_transaction
 from banking.iban import make_uae_iban
 from banking.models import Account, Transaction
 
-DEMO_PASSWORD = "Ledgerly-Demo-2026"  # noqa: S105 - fictional demo customers only; see the DEBUG guard
+DEMO_PASSWORD = "NovaBank-Demo-2026"  # noqa: S105 - fictional demo customers only; see the DEBUG guard
 DUBAI = ZoneInfo("Asia/Dubai")
 CENT = Decimal("0.01")
 
@@ -95,13 +95,13 @@ def _events(account_type: str, rng: random.Random, start: date, today: date, emp
                     C.ATM,
                     Decimal(rng.choice([200, 500, 1000])),
                     "ATM withdrawal",
-                    "Ledgerly ATM",
+                    "NovaBank ATM",
                 )
         else:  # savings
             if day.day == 26:
                 yield day, D.CREDIT, C.TRANSFER_IN, _money(rng, 500, 2_500), "Monthly savings", "Own account"
             if day.day == 1:
-                yield day, D.CREDIT, C.INTEREST, _money(rng, 5, 60), "Interest 3.25% p.a.", "Ledgerly Bank"
+                yield day, D.CREDIT, C.INTEREST, _money(rng, 5, 60), "Interest 3.25% p.a.", "NovaBank"
         day += timedelta(days=1)
 
 

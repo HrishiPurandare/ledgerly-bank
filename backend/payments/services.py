@@ -33,7 +33,7 @@ def add_beneficiary(user, *, name: str, iban: str, nickname: str, now: datetime)
         )
     if Beneficiary.objects.filter(owner=user, iban=iban).exists():
         raise TransferRejected("duplicate_beneficiary", "You already have a beneficiary with this IBAN.")
-    if Beneficiary.objects.filter(owner=user).count() >= settings.LEDGERLY["MAX_BENEFICIARIES"]:
+    if Beneficiary.objects.filter(owner=user).count() >= settings.NOVABANK["MAX_BENEFICIARIES"]:
         raise TransferRejected("too_many_beneficiaries", "You can have up to 100 beneficiaries.")
 
     # One transaction with the email: if the code can't be sent, the beneficiary isn't kept either.
@@ -45,7 +45,7 @@ def add_beneficiary(user, *, name: str, iban: str, nickname: str, now: datetime)
         )
         code = otp.new_code()
         beneficiary.otp_hash = otp.hash_code(beneficiary.id, code)
-        beneficiary.otp_expires_at = now + timedelta(minutes=settings.LEDGERLY["OTP_MINUTES"])
+        beneficiary.otp_expires_at = now + timedelta(minutes=settings.NOVABANK["OTP_MINUTES"])
         beneficiary.save(update_fields=["otp_hash", "otp_expires_at"])
         try:
             otp.send(user.email, name, code)
@@ -74,14 +74,14 @@ def confirm_beneficiary(beneficiary: Beneficiary, code: str, now: datetime) -> B
         )
     if not otp.matches(beneficiary.id, code, beneficiary.otp_hash):
         beneficiary.otp_attempts += 1
-        if beneficiary.otp_attempts >= settings.LEDGERLY["OTP_MAX_ATTEMPTS"]:
+        if beneficiary.otp_attempts >= settings.NOVABANK["OTP_MAX_ATTEMPTS"]:
             beneficiary.status = Beneficiary.Status.LOCKED
         beneficiary.save(update_fields=["otp_attempts", "status"])
         if beneficiary.status == Beneficiary.Status.LOCKED:
             raise TransferRejected(
                 "otp_locked", "Too many wrong codes. Delete this beneficiary and add it again."
             )
-        left = settings.LEDGERLY["OTP_MAX_ATTEMPTS"] - beneficiary.otp_attempts
+        left = settings.NOVABANK["OTP_MAX_ATTEMPTS"] - beneficiary.otp_attempts
         raise TransferRejected("otp_invalid", f"That code is wrong. {left} attempt(s) left.")
     beneficiary.status = Beneficiary.Status.ACTIVE
     beneficiary.activated_at = now
@@ -142,7 +142,7 @@ def _execute(user, data: dict, key: str, request_hash: str, now: datetime) -> Tr
             raise NotFound("Beneficiary not found.")
         if beneficiary.status != Beneficiary.Status.ACTIVE:
             raise TransferRejected("beneficiary_not_active", "Confirm this beneficiary with the OTP first.")
-        to_account = Account.objects.filter(iban=beneficiary.iban).first()  # a Ledgerly customer?
+        to_account = Account.objects.filter(iban=beneficiary.iban).first()  # a NovaBank customer?
         kind = Transfer.Kind.INTERNAL if to_account else Transfer.Kind.LOCAL
         creditor_name, creditor_iban = beneficiary.name, beneficiary.iban
 
