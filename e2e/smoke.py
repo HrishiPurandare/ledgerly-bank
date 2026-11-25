@@ -180,7 +180,15 @@ def main() -> int:
     check(ok.status == 200 and ok.json()["status"] == "ACTIVE", "the right code confirms it")
 
     print("\nSend money: limits, idempotency, ISO 20022")
-    source = next(a for a in accounts if a["status"] == "ACTIVE")
+    # The richest active account, and say so if even that can't cover the test: with too little money
+    # the bank answers insufficient_funds first, and the limit check below would fail for the wrong reason.
+    source = max((a for a in accounts if a["status"] == "ACTIVE"), key=lambda a: Decimal(a["balance"]))
+    if not check(
+        Decimal(source["balance"]) > Decimal("10000.01"),
+        "precondition: an account with more than AED 10,000.01",
+        f"richest has {source['balance']}; reseed the demo data",
+    ):
+        return finish(report)
     too_much = request(
         "POST", f"{BASE}/api/transfers/", token=sara, headers={"Idempotency-Key": str(uuid.uuid4())},
         body={"from_account": source["id"], "beneficiary": beneficiary, "amount": "10000.01"},
