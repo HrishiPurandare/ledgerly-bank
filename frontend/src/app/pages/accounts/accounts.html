@@ -16,7 +16,10 @@
         <section class="totals" data-testid="totals">
           @for (total of totals(); track total.currency) {
             <div class="total" [attr.data-testid]="'total-' + total.currency">
-              <span class="muted">Total balance ({{ total.accounts }} accounts)</span>
+              <span class="muted"
+                >Total balance ({{ total.accounts }}
+                {{ total.accounts === 1 ? 'account' : 'accounts' }})</span
+              >
               <span class="balance big" data-testid="total-amount">{{
                 total.amount | money: total.currency
               }}</span>

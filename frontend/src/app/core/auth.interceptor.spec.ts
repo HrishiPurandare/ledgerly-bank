@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
@@ -71,6 +72,36 @@ describe('authInterceptor', () => {
       ['/login'],
       expect.objectContaining({ queryParams: expect.objectContaining({ expired: 1 }) }),
     );
+  });
+
+  describe('remembers the right page when the session expires', () => {
+    function expireAndCapture(): unknown {
+      const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      client.get('/api/auth/me/').subscribe({ error: () => undefined });
+      http.expectOne('/api/auth/me/').flush(null, { status: 401, statusText: 'Unauthorized' });
+      http.expectOne('/api/auth/refresh/').flush(null, { status: 401, statusText: 'Unauthorized' });
+      return navigate.mock.calls[0][1]?.queryParams?.['returnUrl'];
+    }
+
+    it('before the first navigation has finished, uses the address the user opened', () => {
+      // The bug: router.url is still "/" here, so the customer used to land on Accounts after logging in.
+      vi.spyOn(TestBed.inject(Location), 'path').mockReturnValue('/beneficiaries?tab=new');
+      expect(router.navigated).toBe(false);
+      expect(expireAndCapture()).toBe('/beneficiaries?tab=new');
+    });
+
+    it('during a navigation, uses where the user is going', () => {
+      vi.spyOn(router, 'currentNavigation').mockReturnValue({
+        extractedUrl: router.parseUrl('/transfer?beneficiary=7'),
+      } as ReturnType<Router['currentNavigation']>);
+      expect(expireAndCapture()).toBe('/transfer?beneficiary=7');
+    });
+
+    it('after navigating, uses the current page', async () => {
+      router.resetConfig([{ path: 'accounts/:id', children: [] }]);
+      await router.navigateByUrl('/accounts/3?direction=DEBIT');
+      expect(expireAndCapture()).toBe('/accounts/3?direction=DEBIT');
+    });
   });
 
   it('passes other errors straight through (no refresh on 403, 404 or 500)', () => {

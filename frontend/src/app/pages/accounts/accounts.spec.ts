@@ -79,6 +79,12 @@ describe('Accounts page', () => {
     expect(text('account-frozen')).toBe('Frozen');
   });
 
+  it('says "1 account", not "1 accounts"', async () => {
+    // Found by the Playwright suite (playwright-ts-sdet-framework, accounts.spec.ts).
+    await respond([account({})]);
+    expect(text('total-AED')).toContain('(1 account)');
+  });
+
   it('has an empty state', async () => {
     await respond([]);
     expect(text('accounts-empty')).toContain("don't have any accounts");
